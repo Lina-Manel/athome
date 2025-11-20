@@ -28,8 +28,6 @@
   <p id="teamStatus">Waiting for both teams to join...</p>
   <button class="team-btn red" onclick="joinTeam('red')">Red Team 🔴</button>
   <button class="team-btn blue" onclick="joinTeam('blue')">Blue Team 🔵</button>
-  <br>
-  <button id="startBtn" onclick="startGame()" style="display:none;">Start Game</button>
 </div>
 
 <!-- SECTIONS SCREEN -->
@@ -71,11 +69,11 @@ const db = firebase.database();
 
 // ==== Game State ====
 let gameState = {
-  team: null,
-  redScore:0,
-  blueScore:0,
-  lockedSections:{},
-  assignedSections:{red:[], blue:[]}
+  team: null,   // this device's team
+  redScore: 0,
+  blueScore: 0,
+  lockedSections: {},
+  teamSectionsCount: { red: 0, blue: 0 }
 };
 
 // ==== Sections and Questions ====
@@ -87,87 +85,80 @@ const sections = {
   "صور ورسومات":["ما الفرق بين الصور الفوتوغرافية والمرسومة؟","هل يجوز تعليق الصور على الجدران؟"],
   "اقتناء الكلاب":["ما حكم اقتناء الكلاب بدون حاجة؟","اذكر الحالات التي يجوز فيها اقتناء الكلاب."]
 };
+const maxPerTeam = Math.ceil(Object.keys(sections).length / 2);
 
-// ==== Listen for teams joining ====
-db.ref('game/team').on('value', snapshot => {
-  const teams = snapshot.val() || {};
-  const redJoined = teams.red?.joined || false;
-  const blueJoined = teams.blue?.joined || false;
-
-  document.getElementById('teamStatus').innerText = 
-      `Red Team: ${redJoined?'✔️':'❌'} | Blue Team: ${blueJoined?'✔️':'❌'}`;
-
-  if(redJoined && blueJoined && gameState.team === 'red'){
-      document.getElementById('startBtn').style.display = 'inline-block';
-  }
-});
-
-// ==== Join Team ====
+// ==== Team Joining ====
 function joinTeam(team){
   gameState.team = team;
   db.ref('game/team/'+team+'/joined').set(true);
 }
 
-// ==== Start Game ====
-function startGame(){
-  const secKeys = Object.keys(sections);
-  const half = Math.ceil(secKeys.length / 2);
-  const redSections = secKeys.slice(0, half);
-  const blueSections = secKeys.slice(half);
+// ==== Listen for team join updates ====
+db.ref('game/team').on('value', snapshot => {
+  const teams = snapshot.val() || {};
+  const redJoined = teams.red?.joined || false;
+  const blueJoined = teams.blue?.joined || false;
 
-  db.ref('game/assignedSections').set({red:redSections, blue:blueSections});
-  showScreen('sectionScreen');
-  loadSections();
-}
+  // Update status text
+  const teamStatusEl = document.getElementById('teamStatus');
+  teamStatusEl.innerHTML = `Red Team: ${redJoined ? '✔️' : '❌'} | Blue Team: ${blueJoined ? '✔️' : '❌'}`;
 
-// ==== Listen for section changes ====
-db.ref('game/lockedSections').on('value', snapshot=>{
+  // Show section screen only if both teams joined and this player has selected a team
+  if(redJoined && blueJoined && gameState.team) {
+    showScreen('sectionScreen');
+    loadSections();
+  }
+});
+
+// ==== Listen for section updates ====
+db.ref('game/lockedSections').on('value', snapshot => {
   gameState.lockedSections = snapshot.val() || {};
   loadSections();
-
-  const totalSections = Object.keys(sections).length;
-  if(Object.keys(gameState.lockedSections).length === totalSections){
-      showScore();
-  }
 });
 
 // ==== Load Sections ====
 function loadSections(){
-  const container=document.getElementById('sections');
-  container.innerHTML='';
+  const container = document.getElementById('sections');
+  container.innerHTML = '';
+  Object.keys(sections).forEach(sec => {
+    const div = document.createElement('div');
+    div.className = 'section';
 
-  db.ref('game/assignedSections/' + gameState.team).once('value', snapshot => {
-    const assigned = snapshot.val() || [];
-    assigned.forEach(sec => {
-      const div=document.createElement('div');
-      div.className='section';
-      if(gameState.lockedSections[sec]){
-        div.classList.add('locked');
-        div.innerHTML=`${sec} ❌ (Taken by ${gameState.lockedSections[sec]})`;
-      } else {
-        div.innerHTML=sec;
-        div.onclick=()=>pickSection(sec);
-      }
-      container.appendChild(div);
-    });
+    const takenBy = gameState.lockedSections[sec];
+    const teamCount = gameState.teamSectionsCount[takenBy] || 0;
+
+    // Lock section if taken or team already reached max allowed sections
+    if(takenBy || (gameState.team && gameState.teamSectionsCount[gameState.team] >= maxPerTeam)) {
+      if(takenBy) div.innerHTML = `${sec} ❌ (Taken by ${takenBy})`;
+      div.classList.add('locked');
+    } else {
+      div.innerHTML = sec;
+      div.onclick = () => pickSection(sec);
+    }
+    container.appendChild(div);
   });
 }
 
 // ==== Pick Section ====
 function pickSection(section){
   if(gameState.lockedSections[section]) return;
-  db.ref('game/lockedSections/'+section).set(gameState.team);
 
-  const qList=sections[section];
-  const q=qList[Math.floor(Math.random()*qList.length)];
+  // Limit sections per team
+  if(gameState.teamSectionsCount[gameState.team] >= maxPerTeam) return;
+
+  db.ref('game/lockedSections/'+section).set(gameState.team);
+  gameState.teamSectionsCount[gameState.team]++;
+
+  const qList = sections[section];
+  const q = qList[Math.floor(Math.random() * qList.length)];
   showQuestion(q);
 }
 
 // ==== Show Question ====
 function showQuestion(q){
   showScreen('questionScreen');
-  const box=document.getElementById('questionBox');
-  box.innerHTML=`
+  const box = document.getElementById('questionBox');
+  box.innerHTML = `
     <h3>Question for ${gameState.team==='red'?'Red Team 🔴':'Blue Team 🔵'}</h3>
     <p>${q}</p>
     <button onclick="answer(true)">Correct ✔️</button>
@@ -178,27 +169,38 @@ function showQuestion(q){
 // ==== Answer Handling ====
 function answer(isCorrect){
   if(isCorrect){
-    if(gameState.team==='red') db.ref('game/redScore').transaction(s=> (s||0)+1 );
-    else db.ref('game/blueScore').transaction(s=> (s||0)+1 );
+    if(gameState.team==='red') db.ref('game/redScore').transaction(s => (s||0)+1);
+    else db.ref('game/blueScore').transaction(s => (s||0)+1);
   }
-  showScreen('sectionScreen');
-  loadSections();
+
+  // Check if game finished
+  if(Object.keys(gameState.lockedSections).length >= Object.keys(sections).length){
+    showScore();
+  } else {
+    showScreen('sectionScreen');
+    loadSections();
+  }
 }
 
 // ==== Listen for scores ====
-db.ref('game').on('value', snapshot=>{
+db.ref('game').on('value', snapshot => {
   const data = snapshot.val() || {};
   gameState.redScore = data.redScore || 0;
   gameState.blueScore = data.blueScore || 0;
+
+  if(Object.keys(gameState.lockedSections).length >= Object.keys(sections).length){
+    showScore();
+  }
 });
 
 // ==== Show Score ====
 function showScore(){
   showScreen('scoreScreen');
-  document.getElementById('scoreText').innerHTML=`
+  document.getElementById('scoreText').innerHTML = `
     🔴 Red Team: ${gameState.redScore}<br>
     🔵 Blue Team: ${gameState.blueScore}<br><br>
-    <strong>Winner: ${gameState.redScore>gameState.blueScore?'Red Team 🔴':gameState.redScore<gameState.blueScore?'Blue Team 🔵':'Tie 🤝'}</strong>
+    <strong>Winner: ${gameState.redScore>gameState.blueScore?'Red Team 🔴':
+      gameState.redScore<gameState.blueScore?'Blue Team 🔵':'Tie 🤝'}</strong>
   `;
 }
 
@@ -210,7 +212,7 @@ function resetGame(){
 
 // ==== Show Screen ====
 function showScreen(id){
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
 }
 </script>
