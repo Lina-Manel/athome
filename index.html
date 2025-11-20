@@ -81,7 +81,7 @@ const sections = {
   "النظافة في الإسلام":["لماذا يعتبر الإسلام النظافة جزءًا من الإيمان؟","اذكر مثالًا من السنة يدل على أهمية النظافة."],
   "الترف والمظاهر الوثنية":["ما هو موقف الإسلام من المبالغة في الزينة؟","لماذا يحذر الإسلام من التشبه بالوثنيين؟"],
   "آنية الذهب والفضة":["ما حكم الأكل أو الشرب في أواني الذهب والفضة؟","اذكر سببًا من أسباب التحريم."],
-  "تشخيص وتماثيل":["ما حكم التماثيل المجسمة في الإسلام؟","هل يجوز وضع التماثيل للزينة فقط؛ ولماذا؟"],
+  "تشخيص وتماثيل":["ما حكم التماثيل المجسمة في الإسلام؟","هل يجوز وضع التماثيل للزينة فقط؟ ولماذا؟"],
   "صور ورسومات":["ما الفرق بين الصور الفوتوغرافية والمرسومة؟","هل يجوز تعليق الصور على الجدران؟"],
   "اقتناء الكلاب":["ما حكم اقتناء الكلاب بدون حاجة؟","اذكر الحالات التي يجوز فيها اقتناء الكلاب."]
 };
@@ -122,9 +122,10 @@ function loadSections(){
   Object.keys(sections).forEach(sec => {
     const div = document.createElement('div');
     div.className = 'section';
+
     const takenBy = gameState.lockedSections[sec];
 
-    if(takenBy || (gameState.team && gameState.teamSectionsCount[gameState.team] >= maxPerTeam)){
+    if(takenBy || (gameState.team && gameState.teamSectionsCount[gameState.team] >= maxPerTeam)) {
       if(takenBy) div.innerHTML = `${sec} ❌ (Taken by ${takenBy})`;
       div.classList.add('locked');
     } else {
@@ -167,11 +168,11 @@ function answer(isCorrect){
     else db.ref('game/blueScore').transaction(s => (s||0)+1);
   }
 
-  // ⚡ FIXED: check if all sections used and set finished flag
+  // Check if all sections used
   db.ref('game/lockedSections').once('value').then(snapshot=>{
     const total = Object.keys(snapshot.val() || {}).length;
     if(total >= Object.keys(sections).length){
-      db.ref('game/finished').set(true); // all clients will know
+      showScore();
     } else {
       showScreen('sectionScreen');
       loadSections();
@@ -184,13 +185,6 @@ db.ref('game').on('value', snapshot=>{
   const data = snapshot.val() || {};
   gameState.redScore = data.redScore || 0;
   gameState.blueScore = data.blueScore || 0;
-});
-
-// ⚡ FIXED: Listen for finished flag to show score on all devices
-db.ref('game/finished').on('value', snapshot => {
-  if(snapshot.val() === true){
-    showScore();
-  }
 });
 
 // ==== Show Score ====
