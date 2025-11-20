@@ -72,7 +72,8 @@ let gameState = {
   team: null,   // this device's team
   redScore:0,
   blueScore:0,
-  lockedSections:{}
+  lockedSections:{},
+  teamSectionsCount: { red: 0, blue: 0 }
 };
 
 // ==== Sections and Questions ====
@@ -85,33 +86,51 @@ const sections = {
   "اقتناء الكلاب":["ما حكم اقتناء الكلاب بدون حاجة؟","اذكر الحالات التي يجوز فيها اقتناء الكلاب."]
 };
 
+const maxPerTeam = Math.ceil(Object.keys(sections).length / 2);
+
 // ==== Team Joining ====
 function joinTeam(team){
   gameState.team = team;
   db.ref('game/team/'+team+'/joined').set(true);
-  showScreen('sectionScreen');
-  loadSections();
 }
 
-// ==== Listen for section changes ====
-db.ref('game/lockedSections').on('value', snapshot=>{
+// ==== Listen for team join updates ====
+db.ref('game/team').on('value', snapshot => {
+  const teams = snapshot.val() || {};
+  const redJoined = teams.red?.joined || false;
+  const blueJoined = teams.blue?.joined || false;
+
+  const teamStatusEl = document.getElementById('teamStatus');
+  teamStatusEl.innerHTML = `Red Team: ${redJoined ? '✔️' : '❌'} | Blue Team: ${blueJoined ? '✔️' : '❌'}`;
+
+  if(redJoined && blueJoined && gameState.team) {
+    showScreen('sectionScreen');
+    loadSections();
+  }
+});
+
+// ==== Listen for section updates ====
+db.ref('game/lockedSections').on('value', snapshot => {
   gameState.lockedSections = snapshot.val() || {};
   loadSections();
 });
 
 // ==== Load Sections ====
 function loadSections(){
-  const container=document.getElementById('sections');
-  container.innerHTML='';
-  Object.keys(sections).forEach(sec=>{
-    const div=document.createElement('div');
-    div.className='section';
-    if(gameState.lockedSections[sec]){
+  const container = document.getElementById('sections');
+  container.innerHTML = '';
+  Object.keys(sections).forEach(sec => {
+    const div = document.createElement('div');
+    div.className = 'section';
+
+    const takenBy = gameState.lockedSections[sec];
+
+    if(takenBy || (gameState.team && gameState.teamSectionsCount[gameState.team] >= maxPerTeam)) {
+      if(takenBy) div.innerHTML = `${sec} ❌ (Taken by ${takenBy})`;
       div.classList.add('locked');
-      div.innerHTML=`${sec} ❌ (Taken by ${gameState.lockedSections[sec]})`;
     } else {
-      div.innerHTML=sec;
-      div.onclick=()=>pickSection(sec);
+      div.innerHTML = sec;
+      div.onclick = () => pickSection(sec);
     }
     container.appendChild(div);
   });
@@ -120,17 +139,21 @@ function loadSections(){
 // ==== Pick Section ====
 function pickSection(section){
   if(gameState.lockedSections[section]) return;
+  if(gameState.teamSectionsCount[gameState.team] >= maxPerTeam) return;
+
   db.ref('game/lockedSections/'+section).set(gameState.team);
-  const qList=sections[section];
-  const q=qList[Math.floor(Math.random()*qList.length)];
+  gameState.teamSectionsCount[gameState.team]++;
+
+  const qList = sections[section];
+  const q = qList[Math.floor(Math.random() * qList.length)];
   showQuestion(q);
 }
 
 // ==== Show Question ====
 function showQuestion(q){
   showScreen('questionScreen');
-  const box=document.getElementById('questionBox');
-  box.innerHTML=`
+  const box = document.getElementById('questionBox');
+  box.innerHTML = `
     <h3>Question for ${gameState.team==='red'?'Red Team 🔴':'Blue Team 🔵'}</h3>
     <p>${q}</p>
     <button onclick="answer(true)">Correct ✔️</button>
@@ -141,11 +164,20 @@ function showQuestion(q){
 // ==== Answer Handling ====
 function answer(isCorrect){
   if(isCorrect){
-    if(gameState.team==='red') db.ref('game/redScore').transaction(s=> (s||0)+1 );
-    else db.ref('game/blueScore').transaction(s=> (s||0)+1 );
+    if(gameState.team==='red') db.ref('game/redScore').transaction(s => (s||0)+1);
+    else db.ref('game/blueScore').transaction(s => (s||0)+1);
   }
-  showScreen('sectionScreen');
-  loadSections();
+
+  // Check if all sections used
+  db.ref('game/lockedSections').once('value').then(snapshot=>{
+    const total = Object.keys(snapshot.val() || {}).length;
+    if(total >= Object.keys(sections).length){
+      showScore();
+    } else {
+      showScreen('sectionScreen');
+      loadSections();
+    }
+  });
 }
 
 // ==== Listen for scores ====
@@ -153,19 +185,16 @@ db.ref('game').on('value', snapshot=>{
   const data = snapshot.val() || {};
   gameState.redScore = data.redScore || 0;
   gameState.blueScore = data.blueScore || 0;
-  // Check if game finished
-  if(Object.keys(gameState.lockedSections).length === Object.keys(sections).length){
-    showScore();
-  }
 });
 
 // ==== Show Score ====
 function showScore(){
   showScreen('scoreScreen');
-  document.getElementById('scoreText').innerHTML=`
+  document.getElementById('scoreText').innerHTML = `
     🔴 Red Team: ${gameState.redScore}<br>
     🔵 Blue Team: ${gameState.blueScore}<br><br>
-    <strong>Winner: ${gameState.redScore>gameState.blueScore?'Red Team 🔴':gameState.redScore<gameState.blueScore?'Blue Team 🔵':'Tie 🤝'}</strong>
+    <strong>Winner: ${gameState.redScore>gameState.blueScore?'Red Team 🔴':
+      gameState.redScore<gameState.blueScore?'Blue Team 🔵':'Tie 🤝'}</strong>
   `;
 }
 
