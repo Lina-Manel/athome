@@ -86,7 +86,8 @@ let gameState = {
   currentSection: null,
   currentQuestionIndex: 0,
   currentQuestions: [],
-  lockedSections: {}
+  lockedSections: {},
+  gameActive: false
 };
 
 /* ========== SECTIONS + QUESTIONS ========== */
@@ -110,12 +111,23 @@ const sections = {
 
 /* ========== CONNECTION ========== */
 const myID = "u_" + Math.random().toString(36).substr(2,9);
-db.ref("game/players/"+myID).set(true);
+db.ref("game/players/"+myID).set({ team: null });
+
 db.ref("game/players/"+myID).onDisconnect().remove();
+
+window.addEventListener('beforeunload', () => {
+  if(gameState.gameActive && gameState.team) {
+    db.ref("game/gameEnded").set(true);
+  }
+});
 
 /* ========== TEAM JOIN ========== */
 function joinTeam(team) {
   gameState.team = team;
+  gameState.gameActive = true;
+
+  // Mark player with team
+  db.ref("game/players/"+myID).set({ team: team });
 
   // Initialize scores if they don't exist
   db.ref("game/redScore").once("value").then(snap => {
@@ -126,7 +138,7 @@ function joinTeam(team) {
   });
 
   // Mark team as joined
-  db.ref("game/teams/"+team).set({ joined: true, count: firebase.database.ServerValue.increment(1) });
+  db.ref("game/teams/"+team).set({ joined: true });
 
   // Update UI
   document.getElementById("redBtn").disabled = true;
@@ -135,6 +147,27 @@ function joinTeam(team) {
 
   console.log("Joined team:", team);
 }
+
+/* ========== LISTEN GAME ENDED ========== */
+db.ref("game/gameEnded").on("value", snap => {
+  if(snap.val() === true && gameState.gameActive) {
+    gameState.gameActive = false;
+    alert("One player has quit or refreshed. Game ended!");
+    resetGame();
+  }
+});
+
+/* ========== LISTEN PLAYERS ========== */
+db.ref("game/players").on("value", snap => {
+  const players = snap.val() || {};
+  const playerList = Object.values(players);
+
+  if(gameState.gameActive && playerList.length < 2) {
+    gameState.gameActive = false;
+    alert("Opponent disconnected. Game ended!");
+    resetGame();
+  }
+});
 
 /* ========== LISTEN TEAMS ========== */
 db.ref("game/teams").on("value", snap => {
@@ -256,10 +289,7 @@ function answer(selected) {
   // Update score if correct
   if(isCorrect) {
     const scorePath = `game/${gameState.team}Score`;
-    db.ref(scorePath).transaction(currentScore => {
-      return (currentScore || 0) + 1;
-    });
-
+    db.ref(scorePath).set(firebase.database.ServerValue.increment(1));
     alert("✔️ Correct!");
   } else {
     alert("❌ Wrong! The correct answer was: " + q.a);
