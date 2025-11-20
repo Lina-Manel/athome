@@ -83,7 +83,9 @@ const db = firebase.database();
 /* ========== GAME STATE ========== */
 let gameState = {
   team: null,
-  currentQuestion: null,
+  currentSection: null,
+  currentQuestionIndex: 0,
+  currentQuestions: [],
   lockedSections: {}
 };
 
@@ -208,18 +210,23 @@ function pickSection(sec) {
   // Lock this section for this team
   db.ref("game/lockedSections/"+sec).set(gameState.team);
 
-  // Get random question from section
-  const qList = sections[sec];
-  const q = qList[Math.floor(Math.random() * qList.length)];
-  gameState.currentQuestion = { ...q, section: sec };
+  // Get all 3 questions from section (TF, MCQ, Hadith)
+  gameState.currentSection = sec;
+  gameState.currentQuestions = sections[sec];
+  gameState.currentQuestionIndex = 0;
 
-  showQuestion(q);
+  showQuestion(gameState.currentQuestions[0]);
 }
 
 /* ========== QUESTIONS ========== */
 function showQuestion(q) {
   showScreen("questionScreen");
-  let html = `<h3>${gameState.team === "red" ? "Red Team 🔴" : "Blue Team 🔵"}</h3><p style="font-size:20px; margin:20px 0;">${q.q}</p>`;
+  const qNum = gameState.currentQuestionIndex + 1;
+  const qType = q.type === "tf" ? "True/False" : q.type === "mcq" ? "Multiple Choice" : "Hadith";
+
+  let html = `<h3>${gameState.team === "red" ? "Red Team 🔴" : "Blue Team 🔵"}</h3>
+              <p style="color:#666; font-size:14px;">${gameState.currentSection} - ${qType} (${qNum}/3)</p>
+              <p style="font-size:20px; margin:20px 0;">${q.q}</p>`;
 
   if(q.type === "tf") {
     html += `<button onclick="answer(true)">✔️ True</button>
@@ -235,7 +242,7 @@ function showQuestion(q) {
 
 /* ========== ANSWERS + SCORE ========== */
 function answer(selected) {
-  const q = gameState.currentQuestion;
+  const q = gameState.currentQuestions[gameState.currentQuestionIndex];
   if(!q) return;
 
   let isCorrect = false;
@@ -258,21 +265,26 @@ function answer(selected) {
     alert("❌ Wrong! The correct answer was: " + q.a);
   }
 
-  // Clear current question
-  gameState.currentQuestion = null;
+  // Move to next question in section
+  gameState.currentQuestionIndex++;
 
-  // Check if game is over
-  db.ref("game/lockedSections").once("value").then(snap => {
-    const taken = Object.keys(snap.val() || {}).length;
-    const total = Object.keys(sections).length;
+  // Check if there are more questions in this section
+  if(gameState.currentQuestionIndex < gameState.currentQuestions.length) {
+    showQuestion(gameState.currentQuestions[gameState.currentQuestionIndex]);
+  } else {
+    // Section complete, check if game is over
+    db.ref("game/lockedSections").once("value").then(snap => {
+      const taken = Object.keys(snap.val() || {}).length;
+      const total = Object.keys(sections).length;
 
-    if(taken === total) {
-      showScore();
-    } else {
-      showScreen("sectionScreen");
-      loadSections();
-    }
-  });
+      if(taken === total) {
+        showScore();
+      } else {
+        showScreen("sectionScreen");
+        loadSections();
+      }
+    });
+  }
 }
 
 /* ========== SCORE SCREEN ========== */
