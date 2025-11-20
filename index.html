@@ -69,10 +69,10 @@ const db = firebase.database();
 
 // ==== Game State ====
 let gameState = {
-  team: null,   // this device's team
-  redScore:0,
-  blueScore:0,
-  lockedSections:{},
+  team: null,
+  redScore: 0,
+  blueScore: 0,
+  lockedSections: {},
   teamSectionsCount: { red: 0, blue: 0 }
 };
 
@@ -91,7 +91,9 @@ const maxPerTeam = Math.ceil(Object.keys(sections).length / 2);
 // ==== Team Joining ====
 function joinTeam(team){
   gameState.team = team;
-  db.ref('game/team/'+team+'/joined').set(true);
+  const teamRef = db.ref('game/team/'+team+'/joined');
+  teamRef.set(true);
+  teamRef.onDisconnect().set(false); // reset if player disconnects
 }
 
 // ==== Listen for team join updates ====
@@ -100,9 +102,17 @@ db.ref('game/team').on('value', snapshot => {
   const redJoined = teams.red?.joined || false;
   const blueJoined = teams.blue?.joined || false;
 
-  const teamStatusEl = document.getElementById('teamStatus');
-  teamStatusEl.innerHTML = `Red Team: ${redJoined ? '✔️' : '❌'} | Blue Team: ${blueJoined ? '✔️' : '❌'}`;
+  // Update team status UI
+  document.getElementById('teamStatus').innerHTML =
+    `Red Team: ${redJoined ? '✔️' : '❌'} | Blue Team: ${blueJoined ? '✔️' : '❌'}`;
 
+  // If any team left, reset game for everyone
+  if ((redJoined || blueJoined) && (!redJoined || !blueJoined)) {
+    alert("A player disconnected! Restarting the game...");
+    resetGame();
+  }
+
+  // If both joined and this device has chosen a team
   if(redJoined && blueJoined && gameState.team) {
     showScreen('sectionScreen');
     loadSections();
@@ -122,12 +132,11 @@ function loadSections(){
   Object.keys(sections).forEach(sec => {
     const div = document.createElement('div');
     div.className = 'section';
-
     const takenBy = gameState.lockedSections[sec];
 
     if(takenBy || (gameState.team && gameState.teamSectionsCount[gameState.team] >= maxPerTeam)) {
-      if(takenBy) div.innerHTML = `${sec} ❌ (Taken by ${takenBy})`;
       div.classList.add('locked');
+      if(takenBy) div.innerHTML = `${sec} ❌ (Taken by ${takenBy})`;
     } else {
       div.innerHTML = sec;
       div.onclick = () => pickSection(sec);
@@ -212,3 +221,4 @@ function showScreen(id){
 </script>
 </body>
 </html>
+
