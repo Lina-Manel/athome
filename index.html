@@ -30,13 +30,6 @@
   <button class="team-btn blue" onclick="joinTeam('blue')">Blue Team 🔵</button>
 </div>
 
-<!-- WAIT FOR START -->
-<div id="waitScreen" class="screen">
-  <h2>Waiting for the other team to join...</h2>
-  <p id="waitText"></p>
-  <button id="startBtn" onclick="startGame()" style="display:none;">Start Game</button>
-</div>
-
 <!-- SECTIONS SCREEN -->
 <div id="sectionScreen" class="screen">
   <h2>Pick a Section</h2>
@@ -55,19 +48,31 @@
   <button onclick="resetGame()">Restart</button>
 </div>
 
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
 <script>
+// ==== Firebase Config ====
+const firebaseConfig = {
+  apiKey: "AIzaSyAKP0ovl9ZERz9pHgdy-bNSD8GDtvDjmnc",
+  authDomain: "athome-8dca5.firebaseapp.com",
+  databaseURL: "https://athome-8dca5-default-rtdb.firebaseio.com",
+  projectId: "athome-8dca5",
+  storageBucket: "athome-8dca5.firebasestorage.app",
+  messagingSenderId: "720555193634",
+  appId: "1:720555193634:web:262b9a01b9dc3191cca17b",
+  measurementId: "G-3V4N6Z7Z43"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
 // ==== Game State ====
 let gameState = {
-  sessionId: null,
-  redJoined: false,
-  blueJoined: false,
+  team: null,   // this device's team
   redScore:0,
   blueScore:0,
-  lockedSections:{},
-  currentTeam:null,
-  totalSections:0,
-  usedSections:0,
-  team:null // current device team
+  lockedSections:{}
 };
 
 // ==== Sections and Questions ====
@@ -79,48 +84,20 @@ const sections = {
   "صور ورسومات":["ما الفرق بين الصور الفوتوغرافية والمرسومة؟","هل يجوز تعليق الصور على الجدران؟"],
   "اقتناء الكلاب":["ما حكم اقتناء الكلاب بدون حاجة؟","اذكر الحالات التي يجوز فيها اقتناء الكلاب."]
 };
-gameState.totalSections = Object.keys(sections).length;
-
-// ==== Session Handling ====
-function getSessionId() {
-  const params = new URLSearchParams(window.location.search);
-  if(params.has('session')) return params.get('session');
-  const id = Date.now().toString(); // generate session
-  window.history.replaceState({}, '', `?session=${id}`);
-  return id;
-}
-
-gameState.sessionId = getSessionId();
 
 // ==== Team Joining ====
 function joinTeam(team){
   gameState.team = team;
-  if(team==='red') gameState.redJoined=true;
-  else gameState.blueJoined=true;
-
-  // show wait screen
-  showScreen('waitScreen');
-  updateWaitText();
-}
-
-// ==== Wait Text Update ====
-function updateWaitText(){
-  const waitText = document.getElementById('waitText');
-  let text=`Red Team: ${gameState.redJoined?'✔️':'❌'} | Blue Team: ${gameState.blueJoined?'✔️':'❌'}`;
-  waitText.innerHTML=text;
-
-  // show start button only for red team (host)
-  if(gameState.redJoined && gameState.blueJoined && gameState.team==='red'){
-    document.getElementById('startBtn').style.display='inline-block';
-  }
-}
-
-// ==== Start Game ====
-function startGame(){
-  gameState.currentTeam='red';
+  db.ref('game/team/'+team+'/joined').set(true);
   showScreen('sectionScreen');
   loadSections();
 }
+
+// ==== Listen for section changes ====
+db.ref('game/lockedSections').on('value', snapshot=>{
+  gameState.lockedSections = snapshot.val() || {};
+  loadSections();
+});
 
 // ==== Load Sections ====
 function loadSections(){
@@ -129,8 +106,13 @@ function loadSections(){
   Object.keys(sections).forEach(sec=>{
     const div=document.createElement('div');
     div.className='section';
-    if(gameState.lockedSections[sec]) div.classList.add('locked'), div.innerHTML=`${sec} ❌ (Taken by ${gameState.lockedSections[sec]})`;
-    else {div.innerHTML=sec; div.onclick=()=>pickSection(sec);}
+    if(gameState.lockedSections[sec]){
+      div.classList.add('locked');
+      div.innerHTML=`${sec} ❌ (Taken by ${gameState.lockedSections[sec]})`;
+    } else {
+      div.innerHTML=sec;
+      div.onclick=()=>pickSection(sec);
+    }
     container.appendChild(div);
   });
 }
@@ -138,8 +120,7 @@ function loadSections(){
 // ==== Pick Section ====
 function pickSection(section){
   if(gameState.lockedSections[section]) return;
-  gameState.lockedSections[section]=gameState.currentTeam;
-  gameState.usedSections++;
+  db.ref('game/lockedSections/'+section).set(gameState.team);
   const qList=sections[section];
   const q=qList[Math.floor(Math.random()*qList.length)];
   showQuestion(q);
@@ -150,7 +131,7 @@ function showQuestion(q){
   showScreen('questionScreen');
   const box=document.getElementById('questionBox');
   box.innerHTML=`
-    <h3>Question for ${gameState.currentTeam==='red'?'Red Team 🔴':'Blue Team 🔵'}</h3>
+    <h3>Question for ${gameState.team==='red'?'Red Team 🔴':'Blue Team 🔵'}</h3>
     <p>${q}</p>
     <button onclick="answer(true)">Correct ✔️</button>
     <button onclick="answer(false)">Wrong ❌</button>
@@ -160,33 +141,38 @@ function showQuestion(q){
 // ==== Answer Handling ====
 function answer(isCorrect){
   if(isCorrect){
-    if(gameState.currentTeam==='red') gameState.redScore++;
-    else gameState.blueScore++;
+    if(gameState.team==='red') db.ref('game/redScore').transaction(s=> (s||0)+1 );
+    else db.ref('game/blueScore').transaction(s=> (s||0)+1 );
   }
-  gameState.currentTeam=gameState.currentTeam==='red'?'blue':'red';
-
-  if(gameState.usedSections===gameState.totalSections){
-    showScore();
-  }else{
-    showScreen('sectionScreen');
-    loadSections();
-  }
+  showScreen('sectionScreen');
+  loadSections();
 }
+
+// ==== Listen for scores ====
+db.ref('game').on('value', snapshot=>{
+  const data = snapshot.val() || {};
+  gameState.redScore = data.redScore || 0;
+  gameState.blueScore = data.blueScore || 0;
+  // Check if game finished
+  if(Object.keys(gameState.lockedSections).length === Object.keys(sections).length){
+    showScore();
+  }
+});
 
 // ==== Show Score ====
 function showScore(){
   showScreen('scoreScreen');
-  const s=document.getElementById('scoreText');
-  s.innerHTML=`
+  document.getElementById('scoreText').innerHTML=`
     🔴 Red Team: ${gameState.redScore}<br>
     🔵 Blue Team: ${gameState.blueScore}<br><br>
     <strong>Winner: ${gameState.redScore>gameState.blueScore?'Red Team 🔴':gameState.redScore<gameState.blueScore?'Blue Team 🔵':'Tie 🤝'}</strong>
   `;
 }
 
-// ==== Reset ====
+// ==== Reset Game ====
 function resetGame(){
-  window.location.href=window.location.pathname+'?session='+gameState.sessionId;
+  db.ref('game').remove();
+  window.location.reload();
 }
 
 // ==== Show Screen ====
