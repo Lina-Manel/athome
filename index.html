@@ -3,36 +3,50 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Islamic Red vs Blue Game</title>
+<title>Red vs Blue Islamic Game</title>
 <style>
-  body { font-family: Arial; background:#f5f5f5; text-align:center; }
-  h1 { margin-top:20px; }
-  .screen { display:none; padding:20px; }
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; background:#f0f4f8; text-align:center; margin:0; }
+  h1 { margin-top:20px; color:#333; }
+  .screen { display:none; padding:20px; transition: all 0.3s ease; }
   .active { display:block; }
-  .team-btn { padding:20px 40px; margin:20px; font-size:22px; border:none; color:white; border-radius:15px; cursor:pointer; }
-  .red { background:#c62828; }
-  .blue { background:#1565c0; }
-  .section { background:white; padding:15px; margin:10px auto; width:80%; max-width:400px; border-radius:12px; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1); }
+  .team-btn { padding:20px 50px; margin:20px; font-size:22px; border:none; color:white; border-radius:15px; cursor:pointer; box-shadow:0 5px 15px rgba(0,0,0,0.2); transition:0.3s; }
+  .team-btn:hover { transform: translateY(-3px); }
+  .team-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .red { background:#e53935; }
+  .blue { background:#1e88e5; }
+  .section { background:white; padding:20px; margin:15px auto; width:80%; max-width:450px; border-radius:15px; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.15); transition:0.2s; }
+  .section:hover { transform: translateY(-2px); box-shadow:0 6px 12px rgba(0,0,0,0.2); }
   .locked { background:#ddd; cursor:not-allowed; }
-  #questionBox { background:white; padding:20px; width:85%; max-width:500px; margin:20px auto; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.2); }
-  button { padding:12px 20px; margin-top:20px; font-size:18px; cursor:pointer; }
+  #questionBox { background:white; padding:25px; width:85%; max-width:500px; margin:20px auto; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.2); }
+  #questionBox button { padding:12px 25px; margin:10px; font-size:18px; cursor:pointer; border:none; border-radius:10px; transition:0.2s; background:#2196f3; color:white; }
+  #questionBox button:hover { transform: scale(1.05); }
+  #scoreScreen button { padding:15px 30px; font-size:20px; background:#ff9800; color:white; border:none; border-radius:12px; cursor:pointer; transition:0.2s; }
+  #scoreScreen button:hover { transform: translateY(-3px); }
+  .current-score { position: fixed; top: 10px; right: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+  .waiting { color: #666; font-style: italic; }
 </style>
 </head>
 <body>
 
 <h1>Red vs Blue Islamic Game</h1>
 
+<div class="current-score" id="liveScore" style="display:none;">
+  <div>🔴 Red: <span id="redScoreLive">0</span></div>
+  <div>🔵 Blue: <span id="blueScoreLive">0</span></div>
+</div>
+
 <!-- TEAM SELECTION -->
 <div id="teamScreen" class="screen active">
   <h2>Choose your team</h2>
   <p id="teamStatus">Waiting for both teams to join...</p>
-  <button class="team-btn red" onclick="joinTeam('red')">Red Team 🔴</button>
-  <button class="team-btn blue" onclick="joinTeam('blue')">Blue Team 🔵</button>
+  <button class="team-btn red" id="redBtn" onclick="joinTeam('red')">Red Team 🔴</button>
+  <button class="team-btn blue" id="blueBtn" onclick="joinTeam('blue')">Blue Team 🔵</button>
+  <p class="waiting" id="waitingMsg" style="display:none;">Waiting for other team...</p>
 </div>
 
-<!-- SECTIONS SCREEN -->
+<!-- SECTION SELECTION -->
 <div id="sectionScreen" class="screen">
-  <h2>Pick a Section</h2>
+  <h2 id="sectionTitle">Pick a Section</h2>
   <div id="sections"></div>
 </div>
 
@@ -45,7 +59,7 @@
 <div id="scoreScreen" class="screen">
   <h2>Final Score</h2>
   <p id="scoreText"></p>
-  <button onclick="resetGame()">Restart</button>
+  <button onclick="resetGame()">Restart Game</button>
 </div>
 
 <!-- Firebase -->
@@ -53,9 +67,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-/* ===========================
-   FIREBASE CONFIG
-=========================== */
+/* ========== FIREBASE CONFIG ========== */
 const firebaseConfig = {
   apiKey: "AIzaSyAKP0ovl9ZERz9pHgdy-bNSD8GDtvDjmnc",
   authDomain: "athome-8dca5.firebaseapp.com",
@@ -68,85 +80,119 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* ===========================
-   GAME DATA
-=========================== */
+/* ========== GAME STATE ========== */
 let gameState = {
   team: null,
-  connected: false
+  currentQuestion: null,
+  lockedSections: {}
 };
 
+/* ========== SECTIONS + QUESTIONS ========== */
 const sections = {
-  "النظافة في الإسلام": ["لماذا يعتبر الإسلام النظافة جزءًا من الإيمان؟","اذكر مثالًا من السنة يدل على أهمية النظافة."],
-  "الترف والمظاهر الوثنية": ["ما هو موقف الإسلام من المبالغة في الزينة؟","لماذا يحذر الإسلام من التشبه بالوثنيين؟"],
-  "آنية الذهب والفضة": ["ما حكم الأكل أو الشرب في أواني الذهب والفضة؟","اذكر سببًا من أسباب التحريم."],
-  "تشخيص وتماثيل": ["ما حكم التماثيل المجسمة في الإسلام؟","هل يجوز وضع التماثيل للزينة فقط؟ ولماذا؟"],
-  "صور ورسومات": ["ما الفرق بين الصور الفوتوغرافية والمرسومة؟","هل يجوز تعليق الصور على الجدران؟"],
-  "اقتناء الكلاب": ["ما حكم اقتناء الكلاب بدون حاجة؟","اذكر الحالات التي يجوز فيها اقتناء الكلاب."]
+  "النظافة في الإسلام": [
+    { type:"tf", q:"النظافة جزء من الإيمان؟", a:true },
+    { type:"mcq", q:"أي من التالي مثال على النظافة في السنة؟", a:"وضوء", options:["وضوء","صلاة","صوم"] },
+    { type:"hadith", q:"اختر الحديث الصحيح عن النظافة", a:"الطهور شطر الإيمان", options:["الطهور شطر الإيمان","الصلاة عمود الدين","الصوم جنة"] }
+  ],
+  "الترف والمظاهر الوثنية": [
+    { type:"tf", q:"الإسلام يحذر من المبالغة في الزينة؟", a:true },
+    { type:"mcq", q:"أي موقف من التالي صحيح؟", a:"الإسلام يحذر من التشبه بالوثنيين", options:["الإسلام يشجع الترف","الإسلام يحذر من التشبه بالوثنيين","الإسلام لا يهتم"] },
+    { type:"hadith", q:"اختر الحديث الصحيح", a:"المبالغة في الزينة من المحرمات", options:["المبالغة في الزينة من المحرمات","الصدقة واجبة","الصلاة فرض"] }
+  ],
+  "آنية الذهب والفضة": [
+    { type:"tf", q:"أكل وشرب الذهب والفضة حرام؟", a:true },
+    { type:"mcq", q:"ما سبب التحريم؟", a:"التفاخر والبذخ", options:["التفاخر والبذخ","الزينة فقط","لا تحرم"] },
+    { type:"hadith", q:"اختر الحديث الصحيح عن أواني الذهب والفضة", a:"لعن الله آكليها والمأكولين منها", options:["لعن الله آكليها والمأكولين منها","الصوم جنة","الصلاة عمود الدين"] }
+  ]
 };
 
-const maxPerTeam = Math.ceil(Object.keys(sections).length / 2);
+/* ========== CONNECTION ========== */
+const myID = "u_" + Math.random().toString(36).substr(2,9);
+db.ref("game/players/"+myID).set(true);
+db.ref("game/players/"+myID).onDisconnect().remove();
 
-/* ===========================
-   CONNECTION CHECK
-=========================== */
-
-// Create unique ID for device
-const myID = "u_" + Math.random().toString(36).substr(2, 9);
-
-// Register as connected
-db.ref("game/players/" + myID).set(true);
-
-// Remove when leaving
-window.addEventListener("beforeunload", () => {
-  db.ref("game").remove(); // Auto reset when leaving
-});
-
-/* ===========================
-   TEAM JOIN
-=========================== */
+/* ========== TEAM JOIN ========== */
 function joinTeam(team) {
   gameState.team = team;
-  db.ref("game/team/" + team).set({ joined: true });
+
+  // Initialize scores if they don't exist
+  db.ref("game/redScore").once("value").then(snap => {
+    if(snap.val() === null) db.ref("game/redScore").set(0);
+  });
+  db.ref("game/blueScore").once("value").then(snap => {
+    if(snap.val() === null) db.ref("game/blueScore").set(0);
+  });
+
+  // Mark team as joined
+  db.ref("game/teams/"+team).set({ joined: true, count: firebase.database.ServerValue.increment(1) });
+
+  // Update UI
+  document.getElementById("redBtn").disabled = true;
+  document.getElementById("blueBtn").disabled = true;
+  document.getElementById("waitingMsg").style.display = "block";
+
+  console.log("Joined team:", team);
 }
 
-/* Listen to team join */
-db.ref("game/team").on("value", snap => {
+/* ========== LISTEN TEAMS ========== */
+db.ref("game/teams").on("value", snap => {
   const data = snap.val() || {};
-  const redJoined = data.red?.joined;
-  const blueJoined = data.blue?.joined;
+  const redJoined = data.red?.joined || false;
+  const blueJoined = data.blue?.joined || false;
 
-  document.getElementById("teamStatus").innerHTML =
-    `Red: ${redJoined ? "✔️" : "❌"} | Blue: ${blueJoined ? "✔️" : "❌"}`;
+  document.getElementById("teamStatus").innerHTML = `Red: ${redJoined?"✔️":"❌"} | Blue: ${blueJoined?"✔️":"❌"}`;
 
-  if (redJoined && blueJoined && gameState.team) {
+  // Both teams ready - start game
+  if(redJoined && blueJoined && gameState.team) {
     showScreen("sectionScreen");
+    document.getElementById("liveScore").style.display = "block";
     loadSections();
   }
 });
 
-/* ===========================
-   SECTIONS
-=========================== */
+/* ========== LISTEN SCORES ========== */
+db.ref("game/redScore").on("value", snap => {
+  const score = snap.val() || 0;
+  document.getElementById("redScoreLive").textContent = score;
+});
 
+db.ref("game/blueScore").on("value", snap => {
+  const score = snap.val() || 0;
+  document.getElementById("blueScoreLive").textContent = score;
+});
+
+/* ========== SECTIONS ========== */
 db.ref("game/lockedSections").on("value", snap => {
-  gameState.locked = snap.val() || {};
-  loadSections();
+  gameState.lockedSections = snap.val() || {};
+  if(document.getElementById("sectionScreen").classList.contains("active")) {
+    loadSections();
+  }
+
+  // Check if all sections are taken
+  const totalSections = Object.keys(sections).length;
+  const takenSections = Object.keys(gameState.lockedSections).length;
+
+  if(takenSections === totalSections) {
+    showScore();
+  }
 });
 
 function loadSections() {
   const container = document.getElementById("sections");
   container.innerHTML = "";
 
-  const locked = gameState.locked || {};
+  document.getElementById("sectionTitle").innerHTML = `${gameState.team === "red" ? "Red Team 🔴" : "Blue Team 🔵"} - Pick a Section`;
 
   Object.keys(sections).forEach(sec => {
     const div = document.createElement("div");
     div.className = "section";
 
-    if (locked[sec]) {
-      div.innerHTML = sec + " ❌ (Taken)";
+    const takenBy = gameState.lockedSections[sec];
+
+    if(takenBy) {
+      div.innerHTML = sec + ` ${takenBy === "red" ? "🔴" : "🔵"} (Taken)`;
       div.classList.add("locked");
+      div.onclick = null;
     } else {
       div.innerHTML = sec;
       div.onclick = () => pickSection(sec);
@@ -157,47 +203,71 @@ function loadSections() {
 }
 
 function pickSection(sec) {
-  if (gameState.locked?.[sec]) return;
+  if(gameState.lockedSections[sec]) return;
 
-  db.ref("game/lockedSections/" + sec).set(gameState.team);
+  // Lock this section for this team
+  db.ref("game/lockedSections/"+sec).set(gameState.team);
 
-  const q = sections[sec][Math.floor(Math.random() * sections[sec].length)];
+  // Get random question from section
+  const qList = sections[sec];
+  const q = qList[Math.floor(Math.random() * qList.length)];
+  gameState.currentQuestion = { ...q, section: sec };
+
   showQuestion(q);
 }
 
-/* ===========================
-   QUESTIONS
-=========================== */
-
+/* ========== QUESTIONS ========== */
 function showQuestion(q) {
   showScreen("questionScreen");
-  document.getElementById("questionBox").innerHTML = `
-    <h3>${gameState.team === "red" ? "Red 🔴" : "Blue 🔵"}</h3>
-    <p>${q}</p>
-    <button onclick="answer(true)">Correct ✔️</button>
-    <button onclick="answer(false)">Wrong ❌</button>
-  `;
-}
+  let html = `<h3>${gameState.team === "red" ? "Red Team 🔴" : "Blue Team 🔵"}</h3><p style="font-size:20px; margin:20px 0;">${q.q}</p>`;
 
-/* ===========================
-   ANSWERS + END GAME
-=========================== */
-
-db.ref("game").on("value", snap => {
-  const data = snap.val() || {};
-  if (data.showScore) showScore();
-});
-
-function answer(correct) {
-  if (correct) {
-    const scorePath = "game/" + (gameState.team === "red" ? "redScore" : "blueScore");
-    db.ref(scorePath).transaction(v => (v || 0) + 1);
+  if(q.type === "tf") {
+    html += `<button onclick="answer(true)">✔️ True</button>
+             <button onclick="answer(false)">❌ False</button>`;
+  } else if(q.type === "mcq" || q.type === "hadith") {
+    q.options.forEach(opt => {
+      html += `<button onclick="answer('${opt.replace(/'/g, "\\'")}')">${opt}</button>`;
+    });
   }
 
+  document.getElementById("questionBox").innerHTML = html;
+}
+
+/* ========== ANSWERS + SCORE ========== */
+function answer(selected) {
+  const q = gameState.currentQuestion;
+  if(!q) return;
+
+  let isCorrect = false;
+
+  if(typeof q.a === "boolean") {
+    isCorrect = (selected === q.a);
+  } else {
+    isCorrect = (selected === q.a);
+  }
+
+  // Update score if correct
+  if(isCorrect) {
+    const scorePath = `game/${gameState.team}Score`;
+    db.ref(scorePath).transaction(currentScore => {
+      return (currentScore || 0) + 1;
+    });
+
+    alert("✔️ Correct!");
+  } else {
+    alert("❌ Wrong! The correct answer was: " + q.a);
+  }
+
+  // Clear current question
+  gameState.currentQuestion = null;
+
+  // Check if game is over
   db.ref("game/lockedSections").once("value").then(snap => {
-    const total = Object.keys(snap.val() || {}).length;
-    if (total === Object.keys(sections).length) {
-      db.ref("game/showScore").set(true); // Notify BOTH devices
+    const taken = Object.keys(snap.val() || {}).length;
+    const total = Object.keys(sections).length;
+
+    if(taken === total) {
+      showScore();
     } else {
       showScreen("sectionScreen");
       loadSections();
@@ -205,42 +275,41 @@ function answer(correct) {
   });
 }
 
-/* ===========================
-   SCORE SCREEN
-=========================== */
+/* ========== SCORE SCREEN ========== */
 function showScore() {
   showScreen("scoreScreen");
 
   db.ref("game").once("value").then(snap => {
     const d = snap.val() || {};
+    const redScore = d.redScore || 0;
+    const blueScore = d.blueScore || 0;
+
+    let winner = "Tie 🤝";
+    if(redScore > blueScore) winner = "Red Team 🔴";
+    else if(blueScore > redScore) winner = "Blue Team 🔵";
+
     document.getElementById("scoreText").innerHTML = `
-      🔴 Red: ${d.redScore || 0}<br>
-      🔵 Blue: ${d.blueScore || 0}<br><br>
-      <b>Winner: ${
-        d.redScore > d.blueScore ? "Red 🔴" :
-        d.blueScore > d.redScore ? "Blue 🔵" : "Tie 🤝"
-      }</b>
+      <div style="font-size:24px; margin:20px 0;">
+        🔴 Red Team: ${redScore}<br>
+        🔵 Blue Team: ${blueScore}<br><br>
+        <b style="font-size:32px; color:#4caf50;">Winner: ${winner}</b>
+      </div>
     `;
   });
 }
 
-/* ===========================
-   RESET GAME
-=========================== */
+/* ========== RESET ========== */
 function resetGame() {
-  db.ref("game").remove();
-  window.location.reload();
+  db.ref("game").remove().then(() => {
+    window.location.reload();
+  });
 }
 
-/* ===========================
-   SCREEN SWITCH
-=========================== */
+/* ========== SCREEN SWITCH ========== */
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   document.getElementById(id).classList.add("active");
 }
 </script>
-
 </body>
 </html>
-
