@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Islamic Red vs Blue Game (Session)</title>
+<title>Islamic Red vs Blue Game</title>
 <style>
   body { font-family: Arial; background:#f5f5f5; text-align:center; }
   h1 { margin-top:20px; }
@@ -12,10 +12,10 @@
   .team-btn { padding:20px 40px; margin:20px; font-size:22px; border:none; color:white; border-radius:15px; cursor:pointer; }
   .red { background:#c62828; }
   .blue { background:#1565c0; }
-  .section { background:white; padding:15px; margin:10px auto; width:80%; max-width:400px; border-radius:12px; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1);}
+  .section { background:white; padding:15px; margin:10px auto; width:80%; max-width:400px; border-radius:12px; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1); }
   .locked { background:#ddd; cursor:not-allowed; }
-  #questionBox { background:white; padding:20px; width:85%; max-width:500px; margin:20px auto; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.2);}
-  button { padding:12px 20px; margin-top:20px; font-size:18px; cursor:pointer;}
+  #questionBox { background:white; padding:20px; width:85%; max-width:500px; margin:20px auto; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.2); }
+  button { padding:12px 20px; margin-top:20px; font-size:18px; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -53,7 +53,9 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-// ==== Firebase Config ====
+/* ===========================
+   FIREBASE CONFIG
+=========================== */
 const firebaseConfig = {
   apiKey: "AIzaSyAKP0ovl9ZERz9pHgdy-bNSD8GDtvDjmnc",
   authDomain: "athome-8dca5.firebaseapp.com",
@@ -61,164 +63,184 @@ const firebaseConfig = {
   projectId: "athome-8dca5",
   storageBucket: "athome-8dca5.firebasestorage.app",
   messagingSenderId: "720555193634",
-  appId: "1:720555193634:web:262b9a01b9dc3191cca17b",
-  measurementId: "G-3V4N6Z7Z43"
+  appId: "1:720555193634:web:262b9a01b9dc3191cca17b"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// ==== Game State ====
+/* ===========================
+   GAME DATA
+=========================== */
 let gameState = {
   team: null,
-  redScore: 0,
-  blueScore: 0,
-  lockedSections: {},
-  teamSectionsCount: { red: 0, blue: 0 }
+  connected: false
 };
 
-// ==== Sections and Questions ====
 const sections = {
-  "النظافة في الإسلام":["لماذا يعتبر الإسلام النظافة جزءًا من الإيمان؟","اذكر مثالًا من السنة يدل على أهمية النظافة."],
-  "الترف والمظاهر الوثنية":["ما هو موقف الإسلام من المبالغة في الزينة؟","لماذا يحذر الإسلام من التشبه بالوثنيين؟"],
-  "آنية الذهب والفضة":["ما حكم الأكل أو الشرب في أواني الذهب والفضة؟","اذكر سببًا من أسباب التحريم."],
-  "تشخيص وتماثيل":["ما حكم التماثيل المجسمة في الإسلام؟","هل يجوز وضع التماثيل للزينة فقط؟ ولماذا؟"],
-  "صور ورسومات":["ما الفرق بين الصور الفوتوغرافية والمرسومة؟","هل يجوز تعليق الصور على الجدران؟"],
-  "اقتناء الكلاب":["ما حكم اقتناء الكلاب بدون حاجة؟","اذكر الحالات التي يجوز فيها اقتناء الكلاب."]
+  "النظافة في الإسلام": ["لماذا يعتبر الإسلام النظافة جزءًا من الإيمان؟","اذكر مثالًا من السنة يدل على أهمية النظافة."],
+  "الترف والمظاهر الوثنية": ["ما هو موقف الإسلام من المبالغة في الزينة؟","لماذا يحذر الإسلام من التشبه بالوثنيين؟"],
+  "آنية الذهب والفضة": ["ما حكم الأكل أو الشرب في أواني الذهب والفضة؟","اذكر سببًا من أسباب التحريم."],
+  "تشخيص وتماثيل": ["ما حكم التماثيل المجسمة في الإسلام؟","هل يجوز وضع التماثيل للزينة فقط؟ ولماذا؟"],
+  "صور ورسومات": ["ما الفرق بين الصور الفوتوغرافية والمرسومة؟","هل يجوز تعليق الصور على الجدران؟"],
+  "اقتناء الكلاب": ["ما حكم اقتناء الكلاب بدون حاجة؟","اذكر الحالات التي يجوز فيها اقتناء الكلاب."]
 };
 
 const maxPerTeam = Math.ceil(Object.keys(sections).length / 2);
 
-// ==== Team Joining ====
-function joinTeam(team){
+/* ===========================
+   CONNECTION CHECK
+=========================== */
+
+// Create unique ID for device
+const myID = "u_" + Math.random().toString(36).substr(2, 9);
+
+// Register as connected
+db.ref("game/players/" + myID).set(true);
+
+// Remove when leaving
+window.addEventListener("beforeunload", () => {
+  db.ref("game").remove(); // Auto reset when leaving
+});
+
+/* ===========================
+   TEAM JOIN
+=========================== */
+function joinTeam(team) {
   gameState.team = team;
-  const teamRef = db.ref('game/team/'+team+'/joined');
-  teamRef.set(true);
-  teamRef.onDisconnect().set(false); // reset if player disconnects
+  db.ref("game/team/" + team).set({ joined: true });
 }
 
-// ==== Listen for team join updates ====
-db.ref('game/team').on('value', snapshot => {
-  const teams = snapshot.val() || {};
-  const redJoined = teams.red?.joined || false;
-  const blueJoined = teams.blue?.joined || false;
+/* Listen to team join */
+db.ref("game/team").on("value", snap => {
+  const data = snap.val() || {};
+  const redJoined = data.red?.joined;
+  const blueJoined = data.blue?.joined;
 
-  // Update team status UI
-  document.getElementById('teamStatus').innerHTML =
-    `Red Team: ${redJoined ? '✔️' : '❌'} | Blue Team: ${blueJoined ? '✔️' : '❌'}`;
+  document.getElementById("teamStatus").innerHTML =
+    `Red: ${redJoined ? "✔️" : "❌"} | Blue: ${blueJoined ? "✔️" : "❌"}`;
 
-  // If any team left, reset game for everyone
-  if ((redJoined || blueJoined) && (!redJoined || !blueJoined)) {
-    alert("A player disconnected! Restarting the game...");
-    resetGame();
-  }
-
-  // If both joined and this device has chosen a team
-  if(redJoined && blueJoined && gameState.team) {
-    showScreen('sectionScreen');
+  if (redJoined && blueJoined && gameState.team) {
+    showScreen("sectionScreen");
     loadSections();
   }
 });
 
-// ==== Listen for section updates ====
-db.ref('game/lockedSections').on('value', snapshot => {
-  gameState.lockedSections = snapshot.val() || {};
+/* ===========================
+   SECTIONS
+=========================== */
+
+db.ref("game/lockedSections").on("value", snap => {
+  gameState.locked = snap.val() || {};
   loadSections();
 });
 
-// ==== Load Sections ====
-function loadSections(){
-  const container = document.getElementById('sections');
-  container.innerHTML = '';
-  Object.keys(sections).forEach(sec => {
-    const div = document.createElement('div');
-    div.className = 'section';
-    const takenBy = gameState.lockedSections[sec];
+function loadSections() {
+  const container = document.getElementById("sections");
+  container.innerHTML = "";
 
-    if(takenBy || (gameState.team && gameState.teamSectionsCount[gameState.team] >= maxPerTeam)) {
-      div.classList.add('locked');
-      if(takenBy) div.innerHTML = `${sec} ❌ (Taken by ${takenBy})`;
+  const locked = gameState.locked || {};
+
+  Object.keys(sections).forEach(sec => {
+    const div = document.createElement("div");
+    div.className = "section";
+
+    if (locked[sec]) {
+      div.innerHTML = sec + " ❌ (Taken)";
+      div.classList.add("locked");
     } else {
       div.innerHTML = sec;
       div.onclick = () => pickSection(sec);
     }
+
     container.appendChild(div);
   });
 }
 
-// ==== Pick Section ====
-function pickSection(section){
-  if(gameState.lockedSections[section]) return;
-  if(gameState.teamSectionsCount[gameState.team] >= maxPerTeam) return;
+function pickSection(sec) {
+  if (gameState.locked?.[sec]) return;
 
-  db.ref('game/lockedSections/'+section).set(gameState.team);
-  gameState.teamSectionsCount[gameState.team]++;
+  db.ref("game/lockedSections/" + sec).set(gameState.team);
 
-  const qList = sections[section];
-  const q = qList[Math.floor(Math.random() * qList.length)];
+  const q = sections[sec][Math.floor(Math.random() * sections[sec].length)];
   showQuestion(q);
 }
 
-// ==== Show Question ====
-function showQuestion(q){
-  showScreen('questionScreen');
-  const box = document.getElementById('questionBox');
-  box.innerHTML = `
-    <h3>Question for ${gameState.team==='red'?'Red Team 🔴':'Blue Team 🔵'}</h3>
+/* ===========================
+   QUESTIONS
+=========================== */
+
+function showQuestion(q) {
+  showScreen("questionScreen");
+  document.getElementById("questionBox").innerHTML = `
+    <h3>${gameState.team === "red" ? "Red 🔴" : "Blue 🔵"}</h3>
     <p>${q}</p>
     <button onclick="answer(true)">Correct ✔️</button>
     <button onclick="answer(false)">Wrong ❌</button>
   `;
 }
 
-// ==== Answer Handling ====
-function answer(isCorrect){
-  if(isCorrect){
-    if(gameState.team==='red') db.ref('game/redScore').transaction(s => (s||0)+1);
-    else db.ref('game/blueScore').transaction(s => (s||0)+1);
+/* ===========================
+   ANSWERS + END GAME
+=========================== */
+
+db.ref("game").on("value", snap => {
+  const data = snap.val() || {};
+  if (data.showScore) showScore();
+});
+
+function answer(correct) {
+  if (correct) {
+    const scorePath = "game/" + (gameState.team === "red" ? "redScore" : "blueScore");
+    db.ref(scorePath).transaction(v => (v || 0) + 1);
   }
 
-  // Check if all sections used
-  db.ref('game/lockedSections').once('value').then(snapshot=>{
-    const total = Object.keys(snapshot.val() || {}).length;
-    if(total >= Object.keys(sections).length){
-      showScore();
+  db.ref("game/lockedSections").once("value").then(snap => {
+    const total = Object.keys(snap.val() || {}).length;
+    if (total === Object.keys(sections).length) {
+      db.ref("game/showScore").set(true); // Notify BOTH devices
     } else {
-      showScreen('sectionScreen');
+      showScreen("sectionScreen");
       loadSections();
     }
   });
 }
 
-// ==== Listen for scores ====
-db.ref('game').on('value', snapshot=>{
-  const data = snapshot.val() || {};
-  gameState.redScore = data.redScore || 0;
-  gameState.blueScore = data.blueScore || 0;
-});
+/* ===========================
+   SCORE SCREEN
+=========================== */
+function showScore() {
+  showScreen("scoreScreen");
 
-// ==== Show Score ====
-function showScore(){
-  showScreen('scoreScreen');
-  document.getElementById('scoreText').innerHTML = `
-    🔴 Red Team: ${gameState.redScore}<br>
-    🔵 Blue Team: ${gameState.blueScore}<br><br>
-    <strong>Winner: ${gameState.redScore>gameState.blueScore?'Red Team 🔴':
-      gameState.redScore<gameState.blueScore?'Blue Team 🔵':'Tie 🤝'}</strong>
-  `;
+  db.ref("game").once("value").then(snap => {
+    const d = snap.val() || {};
+    document.getElementById("scoreText").innerHTML = `
+      🔴 Red: ${d.redScore || 0}<br>
+      🔵 Blue: ${d.blueScore || 0}<br><br>
+      <b>Winner: ${
+        d.redScore > d.blueScore ? "Red 🔴" :
+        d.blueScore > d.redScore ? "Blue 🔵" : "Tie 🤝"
+      }</b>
+    `;
+  });
 }
 
-// ==== Reset Game ====
-function resetGame(){
-  db.ref('game').remove();
+/* ===========================
+   RESET GAME
+=========================== */
+function resetGame() {
+  db.ref("game").remove();
   window.location.reload();
 }
 
-// ==== Show Screen ====
-function showScreen(id){
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+/* ===========================
+   SCREEN SWITCH
+=========================== */
+function showScreen(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
 }
 </script>
+
 </body>
 </html>
 
