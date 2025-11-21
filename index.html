@@ -276,7 +276,13 @@ function answer(selected) {
   const q = gameState.currentQuestions[gameState.currentQuestionIndex];
   if(!q) return;
 
-  let isCorrect = (typeof q.a === "boolean") ? (selected === q.a) : (selected === q.a);
+  let isCorrect = false;
+
+  if(typeof q.a === "boolean") {
+    isCorrect = (selected === q.a);
+  } else {
+    isCorrect = (selected.toString().trim().toLowerCase() === q.a.toString().trim().toLowerCase());
+  }
 
   if(isCorrect) {
     const scorePath = `game/${gameState.team}Score`;
@@ -285,9 +291,12 @@ function answer(selected) {
   } else alert("❌ Wrong! The correct answer was: " + q.a);
 
   gameState.currentQuestionIndex++;
-  if(gameState.currentQuestionIndex < gameState.currentQuestions.length) showQuestion(gameState.currentQuestions[gameState.currentQuestionIndex]);
-  else showScreen("sectionScreen");
+  if(gameState.currentQuestionIndex < gameState.currentQuestions.length) 
+    showQuestion(gameState.currentQuestions[gameState.currentQuestionIndex]);
+  else 
+    showScreen("sectionScreen");
 }
+
 
 /* ========== TIMER ========== */
 let timerInterval;
