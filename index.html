@@ -81,6 +81,9 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+db.ref("game").remove();
+
+
 /* ========== GAME STATE ========== */
 let gameState = {
   team: null,
@@ -91,12 +94,7 @@ let gameState = {
   timeUp: false
 };
 
-/* ========== PLAYER ID ========== */
-const myID = "u_" + Math.random().toString(36).substr(2,9);
-db.ref("game/players/"+myID).set(true);
-db.ref("game/players/"+myID).onDisconnect().remove();
-
-
+/* ========== SECTIONS + QUESTIONS ========== */
 /* ========== SECTIONS + QUESTIONS ========== */
 const sections = {
   "النظافة والجمال في البيت": [
@@ -133,9 +131,8 @@ const sections = {
   "تعظيم الصور غير المجسمة": [
     { type:"tf", q:"تعظيم الصور غير المجسمة للحكام الظالمين محرم.", a:true },
     { type:"mcq", q:"ما الحكم في تعليق صور الزعماء على الجدران؟", a:"B", options:["A. جائز مطلقًا","B. محرّم إذا كان فيه تعظيم","C. مكروه فقط","D. لا علاقة له بالدين"] },
-    { type:"mcq", q:"ما السبب الأشد في تحريم الصور غير المجسمة للفسّاق والظلمة؟", a:"B", options:["A. لأنها ملونة","B. لأنها تؤدي لتعظيم أهل الفسق","C. لأنهاتُشبه صور الفن","D. لأنها تعلق في غرف كبيرة"] }
-
-],
+    { type:"mcq", q:"ما السبب الأشد في تحريم الصور غير المجسمة للفسّاق والظلمة؟", a:"B", options:["A. لأنها ملونة","B. لأنها تؤدي لتعظيم أهل الفسق","C. لأنها تُشبه صور الفن","D. لأنها تعلق في غرف كبيرة"] }
+  ],
   "الصور غير المجسمة للزينة": [
     { type:"tf", q:"الصور المسطحة لذوات الأرواح إذا وُضعت للزينة فهي منهي عنها.", a:true },
     { type:"mcq", q:"ما سبب كراهة وضع الصور على الجدران للزينة؟", a:"B", options:["A. لأنها تستهلك الكهرباء","B. لأنها من الترف الزائد","C. لأنها قد تتلف","D. لأنها صغيرة الحجم"] },
@@ -158,18 +155,11 @@ const sections = {
   ]
 };
 
-/* ========== RESET GAME ON PAGE LOAD ========== */
-db.ref("game").remove().then(() => {
-  gameState = {
-    team: null,
-    currentSection: null,
-    currentQuestionIndex: 0,
-    currentQuestions: [],
-    lockedSections: {},
-    timeUp: false
-  };
-  showScreen("teamScreen");
-});
+
+/* ========== CONNECTION ========== */
+const myID = "u_" + Math.random().toString(36).substr(2,9);
+db.ref("game/players/"+myID).set(true);
+db.ref("game/players/"+myID).onDisconnect().remove();
 
 /* ========== TEAM JOIN ========== */
 function joinTeam(team) {
@@ -193,7 +183,7 @@ db.ref("game/teams").on("value", snap => {
 
   document.getElementById("teamStatus").innerHTML = `Red: ${redJoined?"✔️":"❌"} | Blue: ${blueJoined?"✔️":"❌"}`;
 
-  if(redJoined && blueJoined && gameState.team && !gameState.timeUp && !document.getElementById("sectionScreen").classList.contains("active")) {
+  if(redJoined && blueJoined && gameState.team && !gameState.timeUp) {
     showScreen("sectionScreen");
     document.getElementById("liveScore").style.display = "block";
     loadSections();
@@ -265,7 +255,7 @@ function showQuestion(q) {
   const qType = q.type === "tf" ? "True/False" : q.type === "mcq" ? "Multiple Choice" : "Hadith";
 
   let html = `<h3>${gameState.team === "red" ? "Red Team 🔴" : "Blue Team 🔵"}</h3>
-              <p style="color:#666; font-size:14px;">${gameState.currentSection} - ${qType} (${qNum}/${gameState.currentQuestions.length})</p>
+              <p style="color:#666; font-size:14px;">${gameState.currentSection} - ${qType} (${qNum}/3)</p>
               <p style="font-size:20px; margin:20px 0;">${q.q}</p>`;
 
   if(q.type === "tf") {
@@ -288,22 +278,34 @@ function answer(selected) {
   if(!q) return;
 
   let isCorrect = false;
-  if(typeof q.a === "boolean") isCorrect = (selected === q.a);
-  else isCorrect = (selected.toString().trim().toUpperCase() === q.a.toString().trim().toUpperCase());
+  if(typeof q.a === "boolean") {
+    isCorrect = (selected === q.a);
+  } else {
+    isCorrect = (selected.toString().trim().toUpperCase() === q.a.toString().trim().toUpperCase());
+  }
 
-  if(isCorrect) db.ref(`game/${gameState.team}Score`).transaction(s => (s||0)+1);
+  if(isCorrect) {
+    const scorePath = `game/${gameState.team}Score`;
+    db.ref(scorePath).transaction(currentScore => (currentScore || 0) + 1);
+    alert("✔️ Correct!");
+  } else {
+    alert("❌ Wrong! The correct answer was: " + q.a);
+  }
 
   gameState.currentQuestionIndex++;
-  if(gameState.currentQuestionIndex < gameState.currentQuestions.length) showQuestion(gameState.currentQuestions[gameState.currentQuestionIndex]);
-  else showScreen("sectionScreen");
+  if(gameState.currentQuestionIndex < gameState.currentQuestions.length) 
+    showQuestion(gameState.currentQuestions[gameState.currentQuestionIndex]);
+  else 
+    showScreen("sectionScreen");
 }
+
 
 /* ========== TIMER ========== */
 let timerInterval;
 function startTimer() {
-  if(timerInterval) return;
+  if(timerInterval) return; // avoid multiple timers
 
-  let timeLeft = 30*60;
+  let timeLeft = 30 * 60; // 30 minutes in seconds
   updateTimerDisplay(timeLeft);
 
   timerInterval = setInterval(() => {
@@ -312,9 +314,9 @@ function startTimer() {
 
     if(timeLeft <= 0) {
       clearInterval(timerInterval);
-      timerInterval = null;
       gameState.timeUp = true;
 
+      // Mark unfinished sections as "timeUp"
       Object.keys(sections).forEach(sec => {
         if(!gameState.lockedSections[sec]) db.ref("game/lockedSections/"+sec).set("timeUp");
       });
@@ -326,7 +328,7 @@ function startTimer() {
 
 function updateTimerDisplay(seconds) {
   const min = Math.floor(seconds/60).toString().padStart(2,'0');
-  const sec = (seconds%60).toString().padStart(2,'0');
+  const sec = (seconds % 60).toString().padStart(2,'0');
   document.getElementById("timer").textContent = `⏱️ ${min}:${sec}`;
 }
 
@@ -344,7 +346,9 @@ function showScore() {
     if(redScore > blueScore) winner = "Red Team 🔴";
     else if(blueScore > redScore) winner = "Blue Team 🔵";
 
-    let redSections="", blueSections="";
+    let redSections = "";
+    let blueSections = "";
+
     Object.keys(sections).forEach(sec => {
       const takenBy = lockedSections[sec];
       if(takenBy === "red") redSections += `✔️ ${sec}<br>`;
@@ -357,31 +361,22 @@ function showScore() {
 
     document.getElementById("scoreText").innerHTML = `
       <div style="font-size:20px; margin:15px 0;">
-        <b>🔴 Red Team:</b> ${redScore} points<br>Completed Sections:<br>${redSections}<br>
-        <b>🔵 Blue Team:</b> ${blueScore} points<br>Completed Sections:<br>${blueSections}<br>
+        <b>🔴 Red Team:</b> ${redScore} points<br>
+        Completed Sections:<br>${redSections}<br>
+
+        <b>🔵 Blue Team:</b> ${blueScore} points<br>
+        Completed Sections:<br>${blueSections}<br>
       </div>
-      <div style="font-size:24px; margin:20px 0; color:#4caf50;">Winner: ${winner}</div>
+      <div style="font-size:24px; margin:20px 0; color:#4caf50;">
+        Winner: ${winner}
+      </div>
     `;
   });
 }
 
-/* ========== RESET GAME ========== */
+/* ========== RESET ========== */
 function resetGame() {
-  clearInterval(timerInterval);
-  timerInterval = null;
-
-  db.ref("game").remove().then(() => {
-    gameState = {
-      team: null,
-      currentSection: null,
-      currentQuestionIndex: 0,
-      currentQuestions: [],
-      lockedSections: {},
-      timeUp: false
-    };
-    showScreen("teamScreen");
-    document.getElementById("liveScore").style.display = "none";
-  });
+  db.ref("game").remove().then(() => window.location.reload());
 }
 
 /* ========== SCREEN SWITCH ========== */
