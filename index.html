@@ -12,8 +12,6 @@
   .team-btn { padding:20px 50px; margin:20px; font-size:22px; border:none; color:white; border-radius:15px; cursor:pointer; box-shadow:0 5px 15px rgba(0,0,0,0.2); transition:0.3s; }
   .team-btn:hover { transform: translateY(-3px); }
   .team-btn:disabled { opacity:0.5; cursor:not-allowed; }
-  .red { background:#e53935; }
-  .blue { background:#1e88e5; }
   .section { background:white; padding:20px; margin:15px auto; width:80%; max-width:450px; border-radius:15px; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.15); transition:0.2s; }
   .section:hover { transform: translateY(-2px); box-shadow:0 6px 12px rgba(0,0,0,0.2); }
   .locked { background:#ddd; cursor:not-allowed; }
@@ -24,11 +22,14 @@
   #scoreScreen button:hover { transform: translateY(-3px); }
   .current-score { position: fixed; top: 10px; right: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
   .waiting { color: #666; font-style: italic; }
+  #timer { position: fixed; top: 10px; left: 10px; background:white; padding: 12px 18px; border-radius:10px; font-size:18px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
 </style>
 </head>
 <body>
 
 <h1>Red vs Blue Islamic Game</h1>
+
+<div id="timer">⏱️ 30:00</div>
 
 <div class="current-score" id="liveScore" style="display:none;">
   <div>🔴 Red: <span id="redScoreLive">0</span></div>
@@ -86,9 +87,11 @@ let gameState = {
   currentSection: null,
   currentQuestionIndex: 0,
   currentQuestions: [],
-  lockedSections: {}
+  lockedSections: {},
+  timeUp: false
 };
 
+/* ========== SECTIONS + QUESTIONS ========== */
 /* ========== SECTIONS + QUESTIONS ========== */
 const sections = {
   "النظافة والجمال في البيت": [
@@ -149,6 +152,7 @@ const sections = {
   ]
 };
 
+
 /* ========== CONNECTION ========== */
 const myID = "u_" + Math.random().toString(36).substr(2,9);
 db.ref("game/players/"+myID).set(true);
@@ -158,23 +162,14 @@ db.ref("game/players/"+myID).onDisconnect().remove();
 function joinTeam(team) {
   gameState.team = team;
 
-  // Initialize scores if they don't exist
-  db.ref("game/redScore").once("value").then(snap => {
-    if(snap.val() === null) db.ref("game/redScore").set(0);
-  });
-  db.ref("game/blueScore").once("value").then(snap => {
-    if(snap.val() === null) db.ref("game/blueScore").set(0);
-  });
+  db.ref("game/redScore").once("value").then(snap => { if(snap.val() === null) db.ref("game/redScore").set(0); });
+  db.ref("game/blueScore").once("value").then(snap => { if(snap.val() === null) db.ref("game/blueScore").set(0); });
 
-  // Mark team as joined
   db.ref("game/teams/"+team).set({ joined: true, count: firebase.database.ServerValue.increment(1) });
 
-  // Update UI
   document.getElementById("redBtn").disabled = true;
   document.getElementById("blueBtn").disabled = true;
   document.getElementById("waitingMsg").style.display = "block";
-
-  console.log("Joined team:", team);
 }
 
 /* ========== LISTEN TEAMS ========== */
@@ -185,11 +180,11 @@ db.ref("game/teams").on("value", snap => {
 
   document.getElementById("teamStatus").innerHTML = `Red: ${redJoined?"✔️":"❌"} | Blue: ${blueJoined?"✔️":"❌"}`;
 
-  // Both teams ready - start game
-  if(redJoined && blueJoined && gameState.team) {
+  if(redJoined && blueJoined && gameState.team && !gameState.timeUp) {
     showScreen("sectionScreen");
     document.getElementById("liveScore").style.display = "block";
     loadSections();
+    startTimer();
   }
 });
 
@@ -198,7 +193,6 @@ db.ref("game/redScore").on("value", snap => {
   const score = snap.val() || 0;
   document.getElementById("redScoreLive").textContent = score;
 });
-
 db.ref("game/blueScore").on("value", snap => {
   const score = snap.val() || 0;
   document.getElementById("blueScoreLive").textContent = score;
@@ -207,17 +201,12 @@ db.ref("game/blueScore").on("value", snap => {
 /* ========== SECTIONS ========== */
 db.ref("game/lockedSections").on("value", snap => {
   gameState.lockedSections = snap.val() || {};
-  if(document.getElementById("sectionScreen").classList.contains("active")) {
-    loadSections();
-  }
+  if(document.getElementById("sectionScreen").classList.contains("active")) loadSections();
 
-  // Check if all sections are taken
   const totalSections = Object.keys(sections).length;
   const takenSections = Object.keys(gameState.lockedSections).length;
 
-  if(takenSections === totalSections) {
-    showScore();
-  }
+  if(takenSections === totalSections || gameState.timeUp) showScore();
 });
 
 function loadSections() {
@@ -233,7 +222,7 @@ function loadSections() {
     const takenBy = gameState.lockedSections[sec];
 
     if(takenBy) {
-      div.innerHTML = sec + ` ${takenBy === "red" ? "🔴" : "🔵"} (Taken)`;
+      div.innerHTML = sec + ` ${takenBy === "red" ? "🔴" : takenBy === "blue" ? "🔵" : "⏰"} (Taken)`;
       div.classList.add("locked");
       div.onclick = null;
     } else {
@@ -246,12 +235,9 @@ function loadSections() {
 }
 
 function pickSection(sec) {
-  if(gameState.lockedSections[sec]) return;
+  if(gameState.lockedSections[sec] || gameState.timeUp) return;
 
-  // Lock this section for this team
   db.ref("game/lockedSections/"+sec).set(gameState.team);
-
-  // Get all 3 questions from section (TF, MCQ, Hadith)
   gameState.currentSection = sec;
   gameState.currentQuestions = sections[sec];
   gameState.currentQuestionIndex = 0;
@@ -261,6 +247,8 @@ function pickSection(sec) {
 
 /* ========== QUESTIONS ========== */
 function showQuestion(q) {
+  if(gameState.timeUp) return;
+
   showScreen("questionScreen");
   const qNum = gameState.currentQuestionIndex + 1;
   const qType = q.type === "tf" ? "True/False" : q.type === "mcq" ? "Multiple Choice" : "Hadith";
@@ -283,49 +271,54 @@ function showQuestion(q) {
 
 /* ========== ANSWERS + SCORE ========== */
 function answer(selected) {
+  if(gameState.timeUp) return;
+
   const q = gameState.currentQuestions[gameState.currentQuestionIndex];
   if(!q) return;
 
-  let isCorrect = false;
+  let isCorrect = (typeof q.a === "boolean") ? (selected === q.a) : (selected === q.a);
 
-  if(typeof q.a === "boolean") {
-    isCorrect = (selected === q.a);
-  } else {
-    isCorrect = (selected === q.a);
-  }
-
-  // Update score if correct
   if(isCorrect) {
     const scorePath = `game/${gameState.team}Score`;
-    db.ref(scorePath).transaction(currentScore => {
-      return (currentScore || 0) + 1;
-    });
-
+    db.ref(scorePath).transaction(currentScore => (currentScore || 0) + 1);
     alert("✔️ Correct!");
-  } else {
-    alert("❌ Wrong! The correct answer was: " + q.a);
-  }
+  } else alert("❌ Wrong! The correct answer was: " + q.a);
 
-  // Move to next question in section
   gameState.currentQuestionIndex++;
+  if(gameState.currentQuestionIndex < gameState.currentQuestions.length) showQuestion(gameState.currentQuestions[gameState.currentQuestionIndex]);
+  else showScreen("sectionScreen");
+}
 
-  // Check if there are more questions in this section
-  if(gameState.currentQuestionIndex < gameState.currentQuestions.length) {
-    showQuestion(gameState.currentQuestions[gameState.currentQuestionIndex]);
-  } else {
-    // Section complete, check if game is over
-    db.ref("game/lockedSections").once("value").then(snap => {
-      const taken = Object.keys(snap.val() || {}).length;
-      const total = Object.keys(sections).length;
+/* ========== TIMER ========== */
+let timerInterval;
+function startTimer() {
+  if(timerInterval) return; // avoid multiple timers
 
-      if(taken === total) {
-        showScore();
-      } else {
-        showScreen("sectionScreen");
-        loadSections();
-      }
-    });
-  }
+  let timeLeft = 30 * 60; // 30 minutes in seconds
+  updateTimerDisplay(timeLeft);
+
+  timerInterval = setInterval(() => {
+    timeLeft--;
+    updateTimerDisplay(timeLeft);
+
+    if(timeLeft <= 0) {
+      clearInterval(timerInterval);
+      gameState.timeUp = true;
+
+      // Mark unfinished sections as "timeUp"
+      Object.keys(sections).forEach(sec => {
+        if(!gameState.lockedSections[sec]) db.ref("game/lockedSections/"+sec).set("timeUp");
+      });
+
+      showScore();
+    }
+  }, 1000);
+}
+
+function updateTimerDisplay(seconds) {
+  const min = Math.floor(seconds/60).toString().padStart(2,'0');
+  const sec = (seconds % 60).toString().padStart(2,'0');
+  document.getElementById("timer").textContent = `⏱️ ${min}:${sec}`;
 }
 
 /* ========== SCORE SCREEN ========== */
@@ -336,16 +329,35 @@ function showScore() {
     const d = snap.val() || {};
     const redScore = d.redScore || 0;
     const blueScore = d.blueScore || 0;
+    const lockedSections = d.lockedSections || {};
 
     let winner = "Tie 🤝";
     if(redScore > blueScore) winner = "Red Team 🔴";
     else if(blueScore > redScore) winner = "Blue Team 🔵";
 
+    let redSections = "";
+    let blueSections = "";
+
+    Object.keys(sections).forEach(sec => {
+      const takenBy = lockedSections[sec];
+      if(takenBy === "red") redSections += `✔️ ${sec}<br>`;
+      else if(takenBy === "blue") blueSections += `✔️ ${sec}<br>`;
+      else if(takenBy === "timeUp") {
+        redSections += `⏰ ${sec} (Not Finished)<br>`;
+        blueSections += `⏰ ${sec} (Not Finished)<br>`;
+      }
+    });
+
     document.getElementById("scoreText").innerHTML = `
-      <div style="font-size:24px; margin:20px 0;">
-        🔴 Red Team: ${redScore}<br>
-        🔵 Blue Team: ${blueScore}<br><br>
-        <b style="font-size:32px; color:#4caf50;">Winner: ${winner}</b>
+      <div style="font-size:20px; margin:15px 0;">
+        <b>🔴 Red Team:</b> ${redScore} points<br>
+        Completed Sections:<br>${redSections}<br>
+
+        <b>🔵 Blue Team:</b> ${blueScore} points<br>
+        Completed Sections:<br>${blueSections}<br>
+      </div>
+      <div style="font-size:24px; margin:20px 0; color:#4caf50;">
+        Winner: ${winner}
       </div>
     `;
   });
@@ -353,9 +365,7 @@ function showScore() {
 
 /* ========== RESET ========== */
 function resetGame() {
-  db.ref("game").remove().then(() => {
-    window.location.reload();
-  });
+  db.ref("game").remove().then(() => window.location.reload());
 }
 
 /* ========== SCREEN SWITCH ========== */
