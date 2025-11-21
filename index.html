@@ -81,6 +81,15 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+// Optional: only reset if you want everyone to start fresh
+// On page load, clear previous session ID
+localStorage.removeItem("playerID");
+
+// Generate new player ID
+const myID = "u_" + Math.random().toString(36).substr(2,9);
+localStorage.setItem("playerID", myID);
+
+
 /* ========== GAME STATE ========== */
 let gameState = {
   team: null,
@@ -247,8 +256,6 @@ function pickSection(sec) {
 
 /* ========== QUESTIONS ========== */
 function showQuestion(q) {
-  if(gameState.timeUp) return;
-
   showScreen("questionScreen");
   const qNum = gameState.currentQuestionIndex + 1;
   const qType = q.type === "tf" ? "True/False" : q.type === "mcq" ? "Multiple Choice" : "Hadith";
@@ -261,15 +268,15 @@ function showQuestion(q) {
     html += `<button onclick="answer(true)">✔️ True</button>
              <button onclick="answer(false)">❌ False</button>`;
   } else if(q.type === "mcq" || q.type === "hadith") {
-    q.options.forEach(opt => {
-      html += `<button onclick="answer('${opt.replace(/'/g, "\\'")}')">${opt}</button>`;
+    q.options.forEach((opt, i) => {
+      const letter = String.fromCharCode(65 + i); // 'A', 'B', 'C', 'D'
+      html += `<button onclick="answer('${letter}')">${opt}</button>`;
     });
   }
 
   document.getElementById("questionBox").innerHTML = html;
 }
 
-/* ========== ANSWERS + SCORE ========== */
 function answer(selected) {
   if(gameState.timeUp) return;
 
@@ -277,18 +284,19 @@ function answer(selected) {
   if(!q) return;
 
   let isCorrect = false;
-
   if(typeof q.a === "boolean") {
     isCorrect = (selected === q.a);
   } else {
-    isCorrect = (selected.toString().trim().toLowerCase() === q.a.toString().trim().toLowerCase());
+    isCorrect = (selected.toString().trim().toUpperCase() === q.a.toString().trim().toUpperCase());
   }
 
   if(isCorrect) {
     const scorePath = `game/${gameState.team}Score`;
     db.ref(scorePath).transaction(currentScore => (currentScore || 0) + 1);
     alert("✔️ Correct!");
-  } else alert("❌ Wrong! The correct answer was: " + q.a);
+  } else {
+    alert("❌ Wrong! The correct answer was: " + q.a);
+  }
 
   gameState.currentQuestionIndex++;
   if(gameState.currentQuestionIndex < gameState.currentQuestions.length) 
