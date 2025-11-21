@@ -81,13 +81,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// Optional: only reset if you want everyone to start fresh
-// On page load, clear previous session ID
-localStorage.removeItem("playerID");
-
-// Generate new player ID
-const myID = "u_" + Math.random().toString(36).substr(2,9);
-localStorage.setItem("playerID", myID);
+db.ref("game").remove();
 
 
 /* ========== GAME STATE ========== */
