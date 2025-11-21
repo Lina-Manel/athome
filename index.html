@@ -81,8 +81,6 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-db.ref("game").remove();
-
 /* ========== GAME STATE ========== */
 let gameState = {
   team: null,
@@ -93,10 +91,85 @@ let gameState = {
   timeUp: false
 };
 
-/* ========== CONNECTION ========== */
+/* ========== PLAYER ID ========== */
 const myID = "u_" + Math.random().toString(36).substr(2,9);
 db.ref("game/players/"+myID).set(true);
 db.ref("game/players/"+myID).onDisconnect().remove();
+
+
+/* ========== SECTIONS + QUESTIONS ========== */
+const sections = {
+  "النظافة والجمال في البيت": [
+    { type:"tf", q:"كان النبي ﷺ يحب اتساع الدار ويحث على نظافة البيت لأنها من مظاهر الإسلام.", a:true },
+    { type:"mcq", q:"ما المقصود بجواز تجميل البيت بالزينة الحلال؟", a:"B", options:["A. أنه واجب على كل مسلم","B. أنه مباح ما دام بلا إسراف أو تشبه محرم","C. أنه مكروه لأنه ترف","D. أنه خاص بالنساء فقط"] },
+    { type:"mcq", q:"ما الحكمة من منع التكلف في الزينة المبالغ فيها داخل البيوت؟", a:"B", options:["A. لأنها تشغل عن العبادة فقط","B. لأنها قد تؤدي للرياء، والإسراف، ومخالفة الاعتدال الإسلامي","C. لأنها مدعاة للخصام بين الناس","D. لأنها تُشبه بيوت المشركين"] }
+  ],
+  "آنية الذهب والفضة": [
+    { type:"tf", q:"تحريم أواني الذهب والفضة يشمل الرجال فقط دون النساء.", a:false },
+    { type:"mcq", q:"من أسباب منع استعمال آنية الذهب والفضة في الأكل والشرب:", a:"C", options:["A. لأنها ذات لون لامع","B. لأنها كانت تستعمل فقط عند الرومان","C. لأنها صورة من صور الترف والإسراف وكسر قلوب الفقراء","D. لأنها ثقيلة الوزن"] },
+    { type:"mcq", q:"لماذا لم تُحرّم أواني الياقوت والأحجار الثمينة رغم أنها أغلى من الذهب والفضة؟", a:"D", options:["A. لأنها ليست جميلة","B. لأن الفقراء لا يعرفونها فلا تتأذى قلوبهم","C. لأنها كانت نادرة فلا يصنع منها أوانٍ غالباً","D. الجوابان B و C معا"] }
+  ],
+  "التماثيل": [
+    { type:"tf", q:"وجود التماثيل في البيت سبب لتنفير الملائكة.", a:true },
+    { type:"mcq", q:"ما الخطر المرتبط بالتماثيل والذي جعل الإسلام يشدد في حكمها؟", a:"B", options:["A. لأنها باهظة الثمن","B. لأنها قد تُعظّم فتؤدي إلى الشرك كما وقع في الأمم السابقة","C. لأنها تشغل مساحة في المنزل","D. لأنها ثقيلة الحمل"] },
+    { type:"mcq", q:"ما العلة الأساسية التي بُني عليها تحريم التماثيل؟", a:"A", options:["A. حماية التوحيد وسد الذرائع إلى تعظيم الأشخاص","B. لأنها تُفسد الذوق العام","C. لأنها كانت تُصنع من الحجارة فقط","D. لأنها تُسبب نزاعات بين الناس"] }
+  ],
+  "ألعاب الأطفال (الدمى)": [
+    { type:"tf", q:"أبيحت دمى الأطفال لأنها تُعتبر ممتهنة ولا يُقصد بها التعظيم.", a:true },
+    { type:"mcq", q:"ما السبب في تخصيص الرخصة للأطفال دون الكبار؟", a:"B", options:["A. لأن الطفل لا يعرف قيمة الأشياء","B. لأن لعب الأطفال لا تُبقي هيئة التمثال محترمة","C. لأن الأطفال يحبون اللعب","D. لأن الكبار لا يحتاجون ألعاباً"] },
+   { type:"mcq", q:"ما الفرق بين لعب الأطفال والتماثيل المحرمة؟", a:"B", options:["A. أن لعب الأطفال بلا ملامح","B. أن لعب الأطفال ممتهنة لا تُعظّم","C. أنها مصنوعة من القطن فقط","D. أنها موجودة في كل البيوت"] }
+   ],
+  "التماثيل الكبيرة (النصفية / في الميادين)": [
+    { type:"tf", q:"التماثيل النصفية التي تُنصب في الساحات العامة تعتبر أخفّ حرمة من التماثيل الصغيرة في البيوت.", a:false },
+    { type:"mcq", q:"لماذا اعتُبرت التماثيل النصفية في الميادين أشد منعاً؟", a:"B", options:["A. لأنها أكبر حجماً","B. لأنها تُقام للتخليد والتعظيم العلني للشخص","C. لأنها باهظة التكلفة","D. لأنها قد تُفسد المنظر"] },
+    { type:"mcq", q:"ما العلة التي تجعل إقامة تماثيل العظماء في الميادين مشكلة في الإسلام؟", a:"B", options:["A. لأنها تُشبه عادة الملوك فقط","B. لأنها وسيلة للغلو في الأشخاص مما قد يجرّ إلى تعظيمهم ومحبتهم فوق القدر الشرعي","C. لأنها تُشغل مكاناً كبيراً","D. لأنها غير جيدة الصنع"] }
+  ],
+  "أحكام الصور والمصوّرين": [
+    { type:"tf", q:"من قصد مضاهاة خلق الله في صوره كان فعله كفرًا بواحًا.", a:true },
+    { type:"mcq", q:"متى يكون تصوير ذوات الأرواح كفرًا؟", a:"B", options:["A. إذا كانت الصورة جميلة","B. إذا ادّعى المصوِّر أنه قادر على خلق مثل خلق الله","C. إذا كانت بألوان زاهية","D. إذا وُضعت على الحائط"] },
+    { type:"mcq", q:"لماذا يكون ادعاء المضاهاة كفرًا؟", a:"B", options:["A. لأنه إسراف","B. لأنه ادّعاء لخاصية من خصائص الربوبية","C. لأنه تشبّه بغير المسلمين","D. لأنه فن غير محترم"] }
+  ],
+ 
+  "تعظيم الصور غير المجسمة": [
+    { type:"tf", q:"تعظيم الصور غير المجسمة للحكام الظالمين محرم.", a:true },
+    { type:"mcq", q:"ما الحكم في تعليق صور الزعماء على الجدران؟", a:"B", options:["A. جائز مطلقًا","B. محرّم إذا كان فيه تعظيم","C. مكروه فقط","D. لا علاقة له بالدين"] },
+    { type:"mcq", q:"ما السبب الأشد في تحريم الصور غير المجسمة للفسّاق والظلمة؟", a:"B", options:["A. لأنها ملونة","B. لأنها تؤدي لتعظيم أهل الفسق","C. لأنهاتُشبه صور الفن","D. لأنها تعلق في غرف كبيرة"] }
+
+],
+  "الصور غير المجسمة للزينة": [
+    { type:"tf", q:"الصور المسطحة لذوات الأرواح إذا وُضعت للزينة فهي منهي عنها.", a:true },
+    { type:"mcq", q:"ما سبب كراهة وضع الصور على الجدران للزينة؟", a:"B", options:["A. لأنها تستهلك الكهرباء","B. لأنها من الترف الزائد","C. لأنها قد تتلف","D. لأنها صغيرة الحجم"] },
+    { type:"mcq", q:"لماذا تُنهى الصور غير المجسمة لذوات الأرواح؟", a:"B", options:["A. لأنها غير جميلة","B. لأنها تدخل في باب الترف الذي يُفسد القلب","C. لأنها صعبة الصنع","D. لأنها تتطلب مهارة عالية"] }
+  ],
+  "صور الطبيعة": [
+    { type:"tf", q:"صور الجبال والبحار والأشجار لا حرج فيها.", a:true },
+    { type:"mcq", q:"متى تُمنع صور الطبيعة؟", a:"B", options:["A. إذا كانت كبيرة","B. إذا أدت لمعصية أو ترف زائد","C. إذا كانت مرسومة بدقة","D. إذا وُضعت في غرفة الضيوف"] },
+    { type:"mcq", q:"لماذا الأصل جواز صور غير ذوات الأرواح؟", a:"B", options:["A. لأنها جميلة","B. لأنها لا علاقة لها بالتعظيم","C. لأنها رخيصة الثمن","D. لأنها سهلة الطباعة"] }
+  ],
+  "الصور الفوتوغرافية": [
+    { type:"tf", q:"الأصل في الصور الفوتوغرافية الإباحة ما لم تتخذ لتعظيم صاحبها.", a:true },
+    { type:"mcq", q:"ما الذي يجعل الصورة الفوتوغرافية محرّمة؟", a:"B", options:["A. إذا كانت بجودة عالية","B. إذا كان صاحبها من الفسّاق أو الكفار ويُعظَّم بها","C. إذا التُقطت لذكرى","D. إذا كانت ملونة"] },
+    { type:"mcq", q:"لماذا تُحرّم الصور الفوتوغرافية المعلّقة لأهل الفساد؟", a:"B", options:["A. لأنها كبيرة الحجم","B. لأنها نوع من التعظيم لأهل الكفر والفساد","C. لأنها باهضة الثمن","D. لأنها غير واضحة"] }
+  ],
+  "أحكام اقتناء الكلاب": [
+    { type:"tf", q:"نهى النبي ﷺ عن اقتناء الكلاب لغير حاجة.", a:true },
+    { type:"mcq", q:"ما الحكمة من النهي عن إدخال الكلاب في البيوت؟", a:"B", options:["A. لأنها تُصدر روائح","B. لأنها تنبح وتزعج الضيوف وتروع الناس","C. لأنها مكروهة عند العرب","D. لأنها تحتاج طعامًا كثيرًا"] },
+    { type:"mcq", q:"ما أخطر سبب علمي مذكور في تحريم اقتناء الكلاب؟", a:"B", options:["A. أنها تصيب الإنسان بالحساسية","B. أنها تنقل ديدانًا خطيرة عبر اللعق والولوغ","C. أنها تنام في كل مكان","D. أنها تسبب الضجيج"] }
+  ]
+};
+
+/* ========== RESET GAME ON PAGE LOAD ========== */
+db.ref("game").remove().then(() => {
+  gameState = {
+    team: null,
+    currentSection: null,
+    currentQuestionIndex: 0,
+    currentQuestions: [],
+    lockedSections: {},
+    timeUp: false
+  };
+  showScreen("teamScreen");
+});
 
 /* ========== TEAM JOIN ========== */
 function joinTeam(team) {
@@ -105,10 +178,7 @@ function joinTeam(team) {
   db.ref("game/redScore").once("value").then(snap => { if(snap.val() === null) db.ref("game/redScore").set(0); });
   db.ref("game/blueScore").once("value").then(snap => { if(snap.val() === null) db.ref("game/blueScore").set(0); });
 
-  db.ref("game/teams/"+team).transaction(t => {
-    if(t) return {...t, joined:true, count:(t.count||0)+1};
-    return {joined:true, count:1};
-  });
+  db.ref("game/teams/"+team).set({ joined: true, count: firebase.database.ServerValue.increment(1) });
 
   document.getElementById("redBtn").disabled = true;
   document.getElementById("blueBtn").disabled = true;
@@ -123,7 +193,7 @@ db.ref("game/teams").on("value", snap => {
 
   document.getElementById("teamStatus").innerHTML = `Red: ${redJoined?"✔️":"❌"} | Blue: ${blueJoined?"✔️":"❌"}`;
 
-  if(redJoined && blueJoined && gameState.team && !gameState.timeUp) {
+  if(redJoined && blueJoined && gameState.team && !gameState.timeUp && !document.getElementById("sectionScreen").classList.contains("active")) {
     showScreen("sectionScreen");
     document.getElementById("liveScore").style.display = "block";
     loadSections();
@@ -133,10 +203,12 @@ db.ref("game/teams").on("value", snap => {
 
 /* ========== LISTEN SCORES ========== */
 db.ref("game/redScore").on("value", snap => {
-  document.getElementById("redScoreLive").textContent = snap.val() || 0;
+  const score = snap.val() || 0;
+  document.getElementById("redScoreLive").textContent = score;
 });
 db.ref("game/blueScore").on("value", snap => {
-  document.getElementById("blueScoreLive").textContent = snap.val() || 0;
+  const score = snap.val() || 0;
+  document.getElementById("blueScoreLive").textContent = score;
 });
 
 /* ========== SECTIONS ========== */
@@ -145,7 +217,7 @@ db.ref("game/lockedSections").on("value", snap => {
   if(document.getElementById("sectionScreen").classList.contains("active")) loadSections();
 
   const totalSections = Object.keys(sections).length;
-  const takenSections = Object.values(gameState.lockedSections).filter(v=>v==="red"||v==="blue").length;
+  const takenSections = Object.keys(gameState.lockedSections).length;
 
   if(takenSections === totalSections || gameState.timeUp) showScore();
 });
@@ -161,6 +233,7 @@ function loadSections() {
     div.className = "section";
 
     const takenBy = gameState.lockedSections[sec];
+
     if(takenBy) {
       div.innerHTML = sec + ` ${takenBy === "red" ? "🔴" : takenBy === "blue" ? "🔵" : "⏰"} (Taken)`;
       div.classList.add("locked");
@@ -175,24 +248,14 @@ function loadSections() {
 }
 
 function pickSection(sec) {
-  if(gameState.timeUp) return;
+  if(gameState.lockedSections[sec] || gameState.timeUp) return;
 
-  const ref = db.ref("game/lockedSections/"+sec);
-  ref.transaction(current => {
-    if(current) return; // already taken
-    return gameState.team;
-  }, (err, committed, snapshot) => {
-    if(!committed) {
-      alert("Sorry, this section was just taken!");
-      return;
-    }
+  db.ref("game/lockedSections/"+sec).set(gameState.team);
+  gameState.currentSection = sec;
+  gameState.currentQuestions = sections[sec];
+  gameState.currentQuestionIndex = 0;
 
-    gameState.currentSection = sec;
-    gameState.currentQuestions = sections[sec];
-    gameState.currentQuestionIndex = 0;
-
-    showQuestion(gameState.currentQuestions[0]);
-  });
+  showQuestion(gameState.currentQuestions[0]);
 }
 
 /* ========== QUESTIONS ========== */
@@ -202,7 +265,7 @@ function showQuestion(q) {
   const qType = q.type === "tf" ? "True/False" : q.type === "mcq" ? "Multiple Choice" : "Hadith";
 
   let html = `<h3>${gameState.team === "red" ? "Red Team 🔴" : "Blue Team 🔵"}</h3>
-              <p style="color:#666; font-size:14px;">${gameState.currentSection} - ${qType} (${qNum}/3)</p>
+              <p style="color:#666; font-size:14px;">${gameState.currentSection} - ${qType} (${qNum}/${gameState.currentQuestions.length})</p>
               <p style="font-size:20px; margin:20px 0;">${q.q}</p>`;
 
   if(q.type === "tf") {
@@ -210,7 +273,7 @@ function showQuestion(q) {
              <button onclick="answer(false)">❌ False</button>`;
   } else if(q.type === "mcq" || q.type === "hadith") {
     q.options.forEach((opt, i) => {
-      const letter = String.fromCharCode(65 + i);
+      const letter = String.fromCharCode(65 + i); // 'A', 'B', 'C', 'D'
       html += `<button onclick="answer('${letter}')">${opt}</button>`;
     });
   }
@@ -224,22 +287,15 @@ function answer(selected) {
   const q = gameState.currentQuestions[gameState.currentQuestionIndex];
   if(!q) return;
 
-  let isCorrect = (typeof q.a === "boolean") ? (selected === q.a)
-                 : (selected.toString().trim().toUpperCase() === q.a.toString().trim().toUpperCase());
+  let isCorrect = false;
+  if(typeof q.a === "boolean") isCorrect = (selected === q.a);
+  else isCorrect = (selected.toString().trim().toUpperCase() === q.a.toString().trim().toUpperCase());
 
-  if(isCorrect) {
-    const scorePath = `game/${gameState.team}Score`;
-    db.ref(scorePath).transaction(s => (s||0)+1);
-    alert("✔️ Correct!");
-  } else {
-    alert("❌ Wrong! The correct answer was: " + q.a);
-  }
+  if(isCorrect) db.ref(`game/${gameState.team}Score`).transaction(s => (s||0)+1);
 
   gameState.currentQuestionIndex++;
-  if(gameState.currentQuestionIndex < gameState.currentQuestions.length)
-    showQuestion(gameState.currentQuestions[gameState.currentQuestionIndex]);
-  else
-    showScreen("sectionScreen");
+  if(gameState.currentQuestionIndex < gameState.currentQuestions.length) showQuestion(gameState.currentQuestions[gameState.currentQuestionIndex]);
+  else showScreen("sectionScreen");
 }
 
 /* ========== TIMER ========== */
@@ -256,20 +312,17 @@ function startTimer() {
 
     if(timeLeft <= 0) {
       clearInterval(timerInterval);
-      db.ref("game/timeUp").set(true);
+      timerInterval = null;
+      gameState.timeUp = true;
+
+      Object.keys(sections).forEach(sec => {
+        if(!gameState.lockedSections[sec]) db.ref("game/lockedSections/"+sec).set("timeUp");
+      });
+
+      showScore();
     }
   }, 1000);
 }
-
-db.ref("game/timeUp").on("value", snap => {
-  if(snap.val()) {
-    gameState.timeUp = true;
-    Object.keys(sections).forEach(sec => {
-      if(!gameState.lockedSections[sec]) db.ref("game/lockedSections/"+sec).set("timeUp");
-    });
-    showScore();
-  }
-});
 
 function updateTimerDisplay(seconds) {
   const min = Math.floor(seconds/60).toString().padStart(2,'0');
@@ -294,9 +347,12 @@ function showScore() {
     let redSections="", blueSections="";
     Object.keys(sections).forEach(sec => {
       const takenBy = lockedSections[sec];
-      if(takenBy==="red") redSections+=`✔️ ${sec}<br>`;
-      else if(takenBy==="blue") blueSections+=`✔️ ${sec}<br>`;
-      else if(takenBy==="timeUp") redSections+=`⏰ ${sec} (Not Finished)<br>`, blueSections+=`⏰ ${sec} (Not Finished)<br>`;
+      if(takenBy === "red") redSections += `✔️ ${sec}<br>`;
+      else if(takenBy === "blue") blueSections += `✔️ ${sec}<br>`;
+      else if(takenBy === "timeUp") {
+        redSections += `⏰ ${sec} (Not Finished)<br>`;
+        blueSections += `⏰ ${sec} (Not Finished)<br>`;
+      }
     });
 
     document.getElementById("scoreText").innerHTML = `
@@ -304,21 +360,33 @@ function showScore() {
         <b>🔴 Red Team:</b> ${redScore} points<br>Completed Sections:<br>${redSections}<br>
         <b>🔵 Blue Team:</b> ${blueScore} points<br>Completed Sections:<br>${blueSections}<br>
       </div>
-      <div style="font-size:24px; margin:20px 0; color:#4caf50;">
-        Winner: ${winner}
-      </div>
+      <div style="font-size:24px; margin:20px 0; color:#4caf50;">Winner: ${winner}</div>
     `;
   });
 }
 
-/* ========== RESET ========== */
+/* ========== RESET GAME ========== */
 function resetGame() {
-  db.ref("game").remove().then(()=>window.location.reload());
+  clearInterval(timerInterval);
+  timerInterval = null;
+
+  db.ref("game").remove().then(() => {
+    gameState = {
+      team: null,
+      currentSection: null,
+      currentQuestionIndex: 0,
+      currentQuestions: [],
+      lockedSections: {},
+      timeUp: false
+    };
+    showScreen("teamScreen");
+    document.getElementById("liveScore").style.display = "none";
+  });
 }
 
 /* ========== SCREEN SWITCH ========== */
 function showScreen(id) {
-  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   document.getElementById(id).classList.add("active");
 }
 </script>
